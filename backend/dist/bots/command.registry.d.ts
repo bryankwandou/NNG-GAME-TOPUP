@@ -2,7 +2,7 @@
  * Unified command registry for all platforms (Discord, Telegram, WhatsApp)
  * This ensures consistency across chat interfaces
  */
-import { BotReplyOptions } from './adapter.base';
+import { BotReplyOptions, BotAdapterBase } from './adapter.base';
 export declare enum CommandGroup {
     ACCOUNT = "account",
     PRODUCTS = "products",
@@ -35,6 +35,7 @@ export interface CommandContext {
     userId: string;
     username: string;
     platform: 'discord' | 'telegram' | 'whatsapp';
+    adapter: BotAdapterBase;
     command: string;
     args: string[];
     channelId: string;

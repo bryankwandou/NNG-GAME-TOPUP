@@ -22,6 +22,7 @@ export declare class DiscordBotAdapter extends BotAdapterBase {
     private handleCommand;
     sendMessage(channelId: string, message: string): Promise<string>;
     sendEmbed(channelId: string, options: BotReplyOptions): Promise<string>;
+    formatPriceBreakdownView(previewData: import('../order-message-templates').OrderPreviewData): BotReplyOptions;
     linkUserToReseller(_userId: string, _resellerId: string): Promise<void>;
     getResellerIdFromUser(_userId: string): Promise<string | null>;
     shutdown(): Promise<void>;

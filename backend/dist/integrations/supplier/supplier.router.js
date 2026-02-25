@@ -1,49 +1,39 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.supplierRouter = exports.SupplierRouter = void 0;
-// src/integrations/supplier/supplier.router.ts
 const supplier_client_1 = require("./supplier.client");
+const supplier_pool_service_1 = require("./supplier-pool.service");
 const logger_1 = require("../../config/logger");
 const logger = (0, logger_1.createLogger)('SupplierRouter');
 /**
- * SupplierRouter handles automatic failover between providers.
- * It manages which supplier to use based on product configuration and availability.
+ * SupplierRouter handles automatic failover between providers by leveraging SupplierPoolService.
  */
 class SupplierRouter {
     /**
-     * Route and execute an order.
-     * If primary fails with a retryable or terminal stock error, it can switch to backup.
+     * Route and execute an order with intelligent failover.
      */
-    async executeOrder(payload, options = {}) {
-        // 1. Attempt with Primary Supplier
-        logger.info(`Routing order ${payload.clientReference} to PRIMARY supplier`);
-        const primaryResponse = await supplier_client_1.supplierClient.createOrder(payload);
-        if (primaryResponse.success) {
-            return primaryResponse;
-        }
-        // 2. Failover Logic
-        // If primary failed and we have a secondary supplier configured
-        if (options.secondaryId && options.secondaryId !== 'DEFAULT') {
-            logger.warn(`Primary failed for ${payload.clientReference}: ${primaryResponse.message}. Attempting FAILOVER to ${options.secondaryId}`);
-            // In a real multi-supplier setup, we would point to a different client instance here.
-            // For the NNG Bot demo, we simulate the switch.
+    async executeOrder(payload, _options = {}) {
+        const pool = (0, supplier_pool_service_1.getSupplierPoolService)();
+        return pool.executeWithFailover({ productCode: payload.productCode }, async (panel) => {
+            logger.info(`Routing order ${payload.clientReference} to supplier pool member: ${panel.name}`);
+            // In a production environment, you would use panel-specific API clients here.
+            // For this project, we use the standardized supplierClient.
+            const response = await supplier_client_1.supplierClient.createOrder(payload);
             return {
-                success: true,
-                status: 'processing',
-                externalRef: `FAILOVER-${options.secondaryId}-${Date.now()}`,
-                message: `Successfully rerouted to secondary provider: ${options.secondaryId}`,
-                data: { supplier: options.secondaryId }
+                success: response.success,
+                panelId: panel.id,
+                panelName: panel.name,
+                status: response.status,
+                externalRef: response.externalRef || `PENDING-${Date.now()}`,
+                errorMessage: response.message,
+                responseTimeMs: 0
             };
-        }
-        return primaryResponse;
+        });
     }
     /**
      * Check status across suppliers
      */
     async checkStatus(externalRef) {
-        if (externalRef.startsWith('FAILOVER-')) {
-            return { status: 'success', externalRef };
-        }
         return supplier_client_1.supplierClient.checkOrderStatus(externalRef);
     }
 }

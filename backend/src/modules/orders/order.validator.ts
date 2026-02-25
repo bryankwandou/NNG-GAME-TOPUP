@@ -93,7 +93,7 @@ export class OrderValidator {
       );
     }
 
-    // 6. Check for rapid-fire orders (potential abuse)
+    // 6. Velocity Check Anti-Fraud (Phase F: Sovereign Protection)
     const recentOrdersCount = await this.prisma.order.count({
       where: {
         resellerId: data.resellerId,
@@ -104,9 +104,10 @@ export class OrderValidator {
     });
 
     if (recentOrdersCount >= 5) {
-      warnings.push(
-        '⚠️ Multiple orders in quick succession detected. Please slow down.'
+      errors.push(
+        '🚨 SYSTEM VELOCITY LOCK: You have exceeded the maximum safe order limit (5 per minute). Please wait 60 seconds to protect your balance.'
       );
+      return { isValid: false, isDuplicate: false, errors, warnings };
     }
 
     logger.info('Order validation passed', {

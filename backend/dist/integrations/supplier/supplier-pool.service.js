@@ -19,6 +19,7 @@ class SupplierPoolService {
     }
     async selectSupplier(criteria) {
         const { productCode, excludedPanelIds = [] } = criteria;
+        // Fetch active panels sorted by health/priority
         const availablePanels = await this.prisma.supplierPanel.findMany({
             where: {
                 isActive: true,
@@ -31,14 +32,48 @@ class SupplierPoolService {
                 },
             },
             orderBy: [
-                { priority: 'asc' },
-                { successRate: 'desc' },
+                { priority: 'asc' }, // Try Primary panels first
+                { successRate: 'desc' }, // Then try the most reliable ones
             ],
         });
         if (!availablePanels.length) {
-            throw new Error(`No available supplier found for product: ${productCode}`);
+            logger_1.logger.error(`CRITICAL: All suppliers exhausted for product ${productCode}`);
+            throw new Error(`Service temporarily unavailable (Supplier Pool Exhausted)`);
         }
+        // Load Balancing: If multiple panels have same priority, pick based on successRate
         return availablePanels[0];
+    }
+    /**
+     * Execute an order with automatic failover across the pool
+     */
+    async executeWithFailover(criteria, executionFn) {
+        const excludedIds = [];
+        let attempts = 0;
+        const MAX_ATTEMPTS = 3;
+        while (attempts < MAX_ATTEMPTS) {
+            try {
+                const panel = await this.selectSupplier({ ...criteria, excludedPanelIds: excludedIds });
+                logger_1.logger.info(`Attempting order via supplier: ${panel.name} (Attempt ${attempts + 1})`);
+                const startTime = Date.now();
+                const result = await executionFn(panel);
+                const duration = Date.now() - startTime;
+                // Record metrics for the pool logic
+                await this.recordSupplierMetric(panel.id, duration, result.success);
+                if (result.success) {
+                    return result;
+                }
+                logger_1.logger.warn(`Supplier ${panel.name} failed. Attempting failover...`, { reason: result.errorMessage });
+                excludedIds.push(panel.id);
+                attempts++;
+            }
+            catch (error) {
+                logger_1.logger.error(`Failover attempt failed`, { error });
+                attempts++;
+                if (attempts >= MAX_ATTEMPTS)
+                    throw error;
+            }
+        }
+        throw new Error('Order failed after exhausting all available suppliers in pool.');
     }
     async recordSupplierMetric(panelId, responseTimeMs, isSuccess) {
         try {

@@ -108,9 +108,22 @@ export class PricingService {
 }
 
 import { prisma } from '../../config/database';
+import NodeCache from 'node-cache';
+
 export const pricingService = new PricingService(prisma as any);
 
+// 5-Minute Memory Cache for Extreme Performance (Phase F)
+const priceCache = new NodeCache({ stdTTL: 300 });
+
 export async function getResellerPrice(productCode: string, tier: ResellerTier): Promise<bigint> {
+  const cacheKey = `price_${productCode}_${tier}`;
+
+  if (priceCache.has(cacheKey)) {
+    return priceCache.get(cacheKey) as bigint;
+  }
+
   const result = await pricingService.calculatePriceWithTax(productCode, tier);
+
+  priceCache.set(cacheKey, result.finalPrice);
   return result.finalPrice;
 }

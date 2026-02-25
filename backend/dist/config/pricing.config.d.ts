@@ -7,6 +7,7 @@ export interface PricingConfig {
     tax: {
         ppn: number;
         pph: number;
+        taxHandlingStrategy: 'ABSORBED' | 'PASSED_THROUGH';
     };
     overhead: {
         monthlyElectricity: number;

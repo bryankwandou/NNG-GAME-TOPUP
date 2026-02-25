@@ -118,6 +118,7 @@ class DiscordBotAdapter extends adapter_base_1.BotAdapterBase {
         }
         const context = {
             platform: 'discord',
+            adapter: this,
             userId,
             username: interaction.user.username,
             channelId: interaction.channelId,
@@ -210,6 +211,10 @@ class DiscordBotAdapter extends adapter_base_1.BotAdapterBase {
         }
         const msg = await channel.send({ embeds: [discordEmbed] });
         return msg.id;
+    }
+    formatPriceBreakdownView(previewData) {
+        const { formatOrderPreviewDiscord } = require('../order-message-templates');
+        return formatOrderPreviewDiscord(previewData);
     }
     async linkUserToReseller(_userId, _resellerId) { }
     async getResellerIdFromUser(_userId) { return null; }

@@ -64,6 +64,7 @@ class WhatsAppBotAdapter extends adapter_base_1.BotAdapterBase {
             if (command) {
                 const context = {
                     platform: 'whatsapp',
+                    adapter: this,
                     userId: message.from,
                     username: message.pushname || 'WhatsApp User',
                     channelId: message.from,
@@ -132,6 +133,10 @@ class WhatsAppBotAdapter extends adapter_base_1.BotAdapterBase {
         }
         const response = await this.client.sendMessage(channelId, content.trim());
         return response.id.id;
+    }
+    formatPriceBreakdownView(previewData) {
+        const { formatOrderPreviewWhatsApp } = require('../order-message-templates');
+        return { text: formatOrderPreviewWhatsApp(previewData) };
     }
     async linkUserToReseller(userId, resellerId) {
         logger.info(`Linked ${userId} to ${resellerId}`);

@@ -1,14 +1,12 @@
 import { SupplierOrderPayload, SupplierOrderResponse } from './supplier.client';
 /**
- * SupplierRouter handles automatic failover between providers.
- * It manages which supplier to use based on product configuration and availability.
+ * SupplierRouter handles automatic failover between providers by leveraging SupplierPoolService.
  */
 export declare class SupplierRouter {
     /**
-     * Route and execute an order.
-     * If primary fails with a retryable or terminal stock error, it can switch to backup.
+     * Route and execute an order with intelligent failover.
      */
-    executeOrder(payload: SupplierOrderPayload, options?: {
+    executeOrder(payload: SupplierOrderPayload, _options?: {
         secondaryId?: string;
     }): Promise<SupplierOrderResponse>;
     /**

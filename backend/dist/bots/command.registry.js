@@ -84,7 +84,12 @@ exports.COMMAND_REGISTRY = [
         params: [
             { name: 'product', type: 'string', required: true, description: 'Product code' },
         ],
-        handler: async (ctx) => { ctx.send('Price handler'); }
+        handler: async (ctx) => {
+            const breakdownSvc = new price_breakdown_service_1.PriceBreakdownService(database_1.prisma, pricing_config_1.pricingConfigManager.getConfig());
+            const { PriceFlow } = require('./price.flow');
+            const priceFlow = new PriceFlow(database_1.prisma, breakdownSvc);
+            await priceFlow.handlePriceCommand(ctx);
+        }
     },
     {
         name: 'order',

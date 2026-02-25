@@ -1,4 +1,7 @@
 "use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.pricingService = exports.PricingService = void 0;
 exports.getResellerPrice = getResellerPrice;
@@ -69,9 +72,17 @@ class PricingService {
 }
 exports.PricingService = PricingService;
 const database_1 = require("../../config/database");
+const node_cache_1 = __importDefault(require("node-cache"));
 exports.pricingService = new PricingService(database_1.prisma);
+// 5-Minute Memory Cache for Extreme Performance (Phase F)
+const priceCache = new node_cache_1.default({ stdTTL: 300 });
 async function getResellerPrice(productCode, tier) {
+    const cacheKey = `price_${productCode}_${tier}`;
+    if (priceCache.has(cacheKey)) {
+        return priceCache.get(cacheKey);
+    }
     const result = await exports.pricingService.calculatePriceWithTax(productCode, tier);
+    priceCache.set(cacheKey, result.finalPrice);
     return result.finalPrice;
 }
 //# sourceMappingURL=pricing.service.js.map

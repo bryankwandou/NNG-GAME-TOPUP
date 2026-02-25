@@ -34,6 +34,7 @@ class TelegramBotAdapter extends adapter_base_1.BotAdapterBase {
                 if (command) {
                     const context = {
                         platform: 'telegram',
+                        adapter: this,
                         userId: ctx.from.id.toString(),
                         username: ctx.from.username || ctx.from.first_name,
                         channelId: ctx.chat.id.toString(),
@@ -57,11 +58,16 @@ class TelegramBotAdapter extends adapter_base_1.BotAdapterBase {
                                 }
                             }
                             const extra = { parse_mode: 'Markdown' };
+                            // Handle standard BotReplyOptions menus/buttons
                             if (opts.menus && opts.menus.length > 0) {
                                 const inlineKeyboard = opts.menus[0].options.map(opt => [
                                     { text: opt.label, callback_data: `menu:${opt.value}` }
                                 ]);
                                 extra.reply_markup = { inline_keyboard: inlineKeyboard };
+                            }
+                            // Handle platform-specific reply_markup from templates
+                            if (opts.reply_markup) {
+                                extra.reply_markup = opts.reply_markup;
                             }
                             await ctx.reply(content.trim(), extra);
                         }
@@ -102,6 +108,10 @@ class TelegramBotAdapter extends adapter_base_1.BotAdapterBase {
         }
         const msg = await this.bot.telegram.sendMessage(channelId, content.trim(), { parse_mode: 'Markdown' });
         return msg.message_id.toString();
+    }
+    formatPriceBreakdownView(previewData) {
+        const { formatOrderPreviewTelegram } = require('../order-message-templates');
+        return formatOrderPreviewTelegram(previewData);
     }
     async linkUserToReseller(userId, resellerId) {
         logger_1.logger.info(`Linked ${userId} to ${resellerId}`);

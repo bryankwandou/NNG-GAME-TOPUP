@@ -25,7 +25,13 @@ class PriceBreakdownService {
             config.overhead.monthlyBotMaintenance) /
             config.overhead.estimatedMonthlyOrders);
         const subtotalPreTax = costBase + overhead;
-        const ppn = Math.round(subtotalPreTax * config.tax.ppn);
+        // Tax calculation based on strategy
+        let ppn = 0;
+        let baseForMargin = subtotalPreTax;
+        if (config.tax.taxHandlingStrategy === 'PASSED_THROUGH') {
+            ppn = Math.round(subtotalPreTax * config.tax.ppn);
+            baseForMargin = subtotalPreTax + ppn;
+        }
         const tierMap = {
             BRONZE: 'endUser',
             SILVER: 'reseller',
@@ -33,9 +39,19 @@ class PriceBreakdownService {
             AGENCY: 'agency',
         };
         const marginRate = config.margins[tierMap[tier]].targetMarginRate;
-        const margin = Math.round((subtotalPreTax + ppn) * marginRate);
+        let margin = Math.round(baseForMargin * marginRate);
         const pph = Math.round(margin * config.tax.pph);
-        const finalPrice = subtotalPreTax + ppn + margin + pph;
+        let finalPrice = baseForMargin + margin;
+        if (config.tax.taxHandlingStrategy === 'ABSORBED') {
+            // If absorbed, we deduct tax from the generated margin afterwards invisibly
+            // But for transparency we still show it in breakdown.
+            ppn = Math.round(subtotalPreTax * config.tax.ppn);
+            margin = margin - ppn - pph; // Actual profit taken is much lower
+            finalPrice = subtotalPreTax + Math.round(baseForMargin * marginRate); // Price remains "clean" without extra tax tack-on
+        }
+        else {
+            finalPrice = finalPrice + pph;
+        }
         const fairnessRating = marginRate <= 0.05 ? 'excellent' : marginRate <= 0.1 ? 'good' : 'fair';
         const fairnessMessage = fairnessRating === 'excellent'
             ? 'This price is strictly regulated for maximum community benefit.'

@@ -117,6 +117,11 @@ export declare abstract class BotAdapterBase {
         price: number;
     }): BotEmbed;
     /**
+     * Format the visually complex Price Breakdown View
+     * This is implemented specifically by each Platform Adapter (Discord embeds, Telegram keyboards, WhatsApp text)
+     */
+    abstract formatPriceBreakdownView(previewData: import('./order-message-templates').OrderPreviewData): BotReplyOptions;
+    /**
      * Create a standard embed for order status
      */
     protected createOrderStatusEmbed(data: {

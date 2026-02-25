@@ -10,6 +10,7 @@ export declare class TelegramBotAdapter extends BotAdapterBase {
     initialize(): Promise<void>;
     sendMessage(channelId: string, message: string): Promise<string>;
     sendEmbed(channelId: string, options: BotReplyOptions): Promise<string>;
+    formatPriceBreakdownView(previewData: import('../order-message-templates').OrderPreviewData): BotReplyOptions;
     linkUserToReseller(userId: string, resellerId: string): Promise<void>;
     getResellerIdFromUser(_userId: string): Promise<string | null>;
     shutdown(): Promise<void>;

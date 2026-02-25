@@ -22,6 +22,6 @@ export declare class OrderFlow {
     private showGameSelector;
     promptForUid(context: CommandContext, state: OrderFlowState): Promise<void>;
     handleUidInput(context: CommandContext, state: OrderFlowState, input: string): Promise<void>;
-    showPriceBreakdown(context: CommandContext, gameCode: string, denomination: number, resellerTier: ResellerTier, platform: 'discord' | 'telegram' | 'whatsapp'): Promise<DetailedPriceBreakdown>;
+    showPriceBreakdown(context: CommandContext, gameCode: string, denomination: number, resellerTier: ResellerTier): Promise<DetailedPriceBreakdown>;
 }
 //# sourceMappingURL=order.flow.d.ts.map

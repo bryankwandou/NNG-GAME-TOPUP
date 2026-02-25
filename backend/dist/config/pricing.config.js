@@ -15,6 +15,7 @@ exports.DEFAULT_PRICING_CONFIG = {
     tax: {
         ppn: 0.11, // 11% Value-added tax
         pph: 0.02, // 2% income tax (simplified; actual may vary)
+        taxHandlingStrategy: 'PASSED_THROUGH',
     },
     overhead: {
         monthlyElectricity: 500000, // Rp 500k/month
@@ -156,6 +157,7 @@ function loadPricingConfigFromFile(configPath) {
             tax: {
                 ppn: parsed.tax?.ppn_rate || exports.DEFAULT_PRICING_CONFIG.tax.ppn,
                 pph: parsed.tax?.pph_rate || exports.DEFAULT_PRICING_CONFIG.tax.pph,
+                taxHandlingStrategy: parsed.tax?.handling_strategy || exports.DEFAULT_PRICING_CONFIG.tax.taxHandlingStrategy,
             },
             overhead: {
                 monthlyElectricity: parsed.monthly_costs?.electricity_idr || exports.DEFAULT_PRICING_CONFIG.overhead.monthlyElectricity,

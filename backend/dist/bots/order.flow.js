@@ -1,7 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.OrderFlow = void 0;
-const order_message_templates_1 = require("./order-message-templates");
 const session_manager_1 = require("./session.manager");
 const qris_service_1 = require("../modules/payments/qris.service");
 class OrderFlow {
@@ -59,20 +58,30 @@ Please use the menu below to choose your game:
         const lastPlayerIds = reseller?.metadata?.lastPlayerIds || {};
         const gameType = (state.selectedGame || '').split('_')[0] || 'GENERAL';
         const lastId = lastPlayerIds[gameType];
-        const message = `
+        const baseMessage = `
 **🆔 Step 3: Enter Player ID**
 ━━━━━━━━━━━━━━━━━━━
 
 Game: **${state.selectedGameName}**
 Denomination: **${state.selectedDenomination}**
 
-${lastId
-            ? `💡 **Smart Suggestion:** You recently used \`${lastId}\` for this game.\n*Reply with "same" to use it, or enter a new Player ID below:*`
-            : 'Please enter your **Player ID / UID** for this game:'}
-
+Please enter your **Player ID / UID** for this game:
 *Format example: 12345678(1234)*
     `.trim();
-        await context.send(message);
+        if (lastId && context.sendEmbed) {
+            await context.sendEmbed({
+                text: baseMessage + `\n\n💡 **Smart Suggestion:** Click the button below to use your last ID (\`${lastId}\`).`,
+                buttons: [
+                    { label: `Use ${lastId}`, id: `uid:same:${state.sessionId}`, style: 'primary' }
+                ]
+            });
+        }
+        else if (lastId) {
+            await context.send(baseMessage + `\n\n💡 **Smart Suggestion:** You recently used \`${lastId}\` for this game.\n*Reply with "same" to use it.*`);
+        }
+        else {
+            await context.send(baseMessage);
+        }
     }
     async handleUidInput(context, state, input) {
         const reseller = await this.prisma.reseller.findUnique({
@@ -80,7 +89,7 @@ ${lastId
             select: { metadata: true }
         });
         let processedUid = input.trim();
-        if (processedUid.toLowerCase() === 'same') {
+        if (processedUid.toLowerCase() === 'same' || processedUid.startsWith('uid:same:')) {
             const lastPlayerIds = reseller?.metadata?.lastPlayerIds || {};
             const gameType = (state.selectedGame || '').split('_')[0] || 'GENERAL';
             const lastId = lastPlayerIds[gameType];
@@ -94,7 +103,7 @@ ${lastId
         state.selectedUid = processedUid;
         state.currentStep = 'REVIEW';
     }
-    async showPriceBreakdown(context, gameCode, denomination, resellerTier, platform) {
+    async showPriceBreakdown(context, gameCode, denomination, resellerTier) {
         const product = await this.prisma.product.findUnique({
             where: { code: gameCode },
         });
@@ -102,7 +111,6 @@ ${lastId
             throw new Error(`Product not found: ${gameCode}`);
         }
         const breakdown = await this.priceBreakdownService.generatePriceBreakdown(gameCode, denomination, resellerTier);
-        let priceMessage;
         const previewData = {
             gameName: product.gameName,
             denomination: breakdown.product.denomination.toString(),
@@ -110,15 +118,8 @@ ${lastId
             breakdown,
             estimatedTime: '1-5 minutes',
         };
-        if (platform === 'telegram') {
-            priceMessage = (0, order_message_templates_1.formatOrderPreviewTelegram)(previewData);
-        }
-        else if (platform === 'whatsapp') {
-            priceMessage = (0, order_message_templates_1.formatOrderPreviewWhatsApp)(previewData);
-        }
-        else {
-            priceMessage = (0, order_message_templates_1.formatOrderPreviewDiscord)(previewData);
-        }
+        // polymorphic rendering via Platform Adapter (Phase D Perfection)
+        const renderedView = context.adapter.formatPriceBreakdownView(previewData);
         const qrisService = new qris_service_1.QRISService();
         const qrisPayload = qrisService.generateQRIS({
             merchantName: 'NNG TOPUP STORE',
@@ -131,10 +132,20 @@ ${lastId
             description: `Please scan the QRIS payload below using your Banking or E-Wallet app.\n\n\`\`\`${qrisPayload}\`\`\`\n\n_Once paid, the order will be processed seamlessly._`,
             color: '#00FF00',
         };
-        await context.sendEmbed?.({
-            text: priceMessage,
-            embeds: [paymentEmbed]
-        });
+        // Safely integrate payment instructions into the polymorphic view
+        if (renderedView.embeds) {
+            renderedView.embeds.push(paymentEmbed);
+        }
+        else {
+            renderedView.embeds = [paymentEmbed];
+        }
+        if (context.sendEmbed) {
+            await context.sendEmbed(renderedView);
+        }
+        else {
+            // WhatsApp text fallback
+            await context.send((renderedView.text || '') + `\n\n💳 QRIS Payment:\n${qrisPayload}`);
+        }
         return breakdown;
     }
 }

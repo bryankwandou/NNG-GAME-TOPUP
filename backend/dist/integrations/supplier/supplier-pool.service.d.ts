@@ -25,8 +25,8 @@ export interface SupplierOrderResponse {
     success: boolean;
     panelId: string;
     panelName: string;
-    externalOrderId?: string;
-    status: 'success' | 'pending' | 'failed';
+    externalRef?: string;
+    status: 'success' | 'processing' | 'failed';
     errorMessage?: string;
     responseTimeMs: number;
 }
@@ -35,6 +35,10 @@ export declare class SupplierPoolService {
     private readonly MOVING_AVERAGE_WINDOW;
     constructor(prisma: PrismaClient);
     selectSupplier(criteria: SupplierSelectionCriteria): Promise<any>;
+    /**
+     * Execute an order with automatic failover across the pool
+     */
+    executeWithFailover(criteria: SupplierSelectionCriteria, executionFn: (panel: any) => Promise<SupplierOrderResponse>): Promise<SupplierOrderResponse>;
     recordSupplierMetric(panelId: string, responseTimeMs: number, isSuccess: boolean): Promise<void>;
 }
 export declare function initializeSupplierPoolService(prisma: PrismaClient): SupplierPoolService;
