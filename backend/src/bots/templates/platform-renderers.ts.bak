@@ -1,0 +1,465 @@
+/**
+ * Phase A: Platform-Specific Message Renderers
+ * 
+ * Transforms generic message templates into platform-native formats:
+ * - Discord: Rich embeds with buttons
+ * - Telegram: Markdown with inline keyboards
+ * - WhatsApp: Plain text with emojis + quick replies
+ */
+
+import { OrderStartMessage, PriceQuoteMessage, OrderConfirmationMessage, OrderStatusMessage } from './order-messages';
+
+/**
+ * Discord-specific rendering (embeds + components)
+ */
+export class DiscordMessageRenderer {
+  /**
+   * Render order start as Discord embed with buttons
+   */
+  static renderOrderStart(template: OrderStartMessage) {
+    return {
+      embeds: [
+        {
+          title: template.title,
+          description: template.description,
+          color: 0x5865f2, // Discord blurple
+          footer: {
+            text: template.footer,
+          },
+        },
+      ],
+      components: [
+        {
+          type: 1, // Action Row
+          components: template.options.map((opt) => ({
+            type: 2, // Button
+            style: 1, // Primary
+            label: opt.label,
+            emoji: { name: opt.emoji },
+            custom_id: opt.value,
+          })),
+        },
+      ],
+    };
+  }
+
+  /**
+   * Render price breakdown as Discord embed
+   */
+  static renderPriceQuote(data: PriceQuoteMessage) {
+    const marginPercent = ((data.components.margin / data.finalPrice) * 100).toFixed(1);
+    const fairnessColor = {
+      excellent: 0x00ff00, // Green
+      good: 0x00ff00,
+      fair: 0xff9900, // Orange
+      concerning: 0xff0000, // Red
+    }[data.fairnessRating];
+
+    return {
+      embeds: [
+        {
+          title: `💰 Price Breakdown`,
+          description: `${data.game} – ${data.denomination}`,
+          color: fairnessColor,
+          fields: [
+            {
+              name: '🏭 Supplier Cost',
+              value: `Rp ${data.components.supplier.toLocaleString('id-ID')}`,
+              inline: true,
+            },
+            {
+              name: '💡 Overhead (Elec+Host+Maint)',
+              value: `Rp ${(data.components.electricity + data.components.hosting + data.components.maintenance).toLocaleString('id-ID')}`,
+              inline: true,
+            },
+            {
+              name: '📈 Tax (PPN)',
+              value: `Rp ${data.components.tax.toLocaleString('id-ID')}`,
+              inline: true,
+            },
+            {
+              name: '💳 Payment Fee',
+              value: `Rp ${data.components.paymentFee.toLocaleString('id-ID')}`,
+              inline: true,
+            },
+            {
+              name: `🎯 Your Margin (${marginPercent}%)`,
+              value: `Rp ${data.components.margin.toLocaleString('id-ID')}`,
+              inline: true,
+            },
+            {
+              name: '\u200b',
+              value: '\u200b',
+              inline: true,
+            },
+            {
+              name: `💰 Final Price (${data.tier})`,
+              value: `**Rp ${data.finalPrice.toLocaleString('id-ID')}**`,
+              inline: false,
+            },
+            {
+              name: `✅ Fairness Rating: ${data.fairnessRating.toUpperCase()}`,
+              value: data.fairnessNote + (data.tierUpgradeHint ? `\n\n💡 ${data.tierUpgradeHint}` : ''),
+              inline: false,
+            },
+          ],
+          footer: {
+            text: 'Fair pricing model | All costs transparent',
+          },
+        },
+      ],
+    };
+  }
+
+  /**
+   * Render confirmation as embed with buttons
+   */
+  static renderOrderConfirmation(data: OrderConfirmationMessage) {
+    const warnings = data.warnings.length > 0
+      ? `\n⚠️ **Important:**\n${data.warnings.map((w) => `• ${w}`).join('\n')}`
+      : '';
+
+    return {
+      embeds: [
+        {
+          title: '🔍 Order Review & Confirmation',
+          color: 0xff9900, // Orange for caution
+          fields: [
+            { name: '🎮 Game', value: data.gameName, inline: true },
+            { name: '💎 Denomination', value: data.denomination.toString(), inline: true },
+            { name: '🆔 Player ID', value: `\`${data.playerId}\``, inline: true },
+            {
+              name: '💰 Total Price',
+              value: `**Rp ${data.finalPrice.toLocaleString('id-ID')}**\n*(all fees included)*`,
+              inline: false,
+            },
+            { name: '⏱️ ETA', value: data.eta, inline: true },
+            { name: '🔒 Confirmation Code', value: `\`${data.confirmationCode}\``, inline: true },
+            { name: '⏳ Expires', value: `${data.expiryMinutes} min`, inline: true },
+          ],
+          description: `${warnings}\n\n⚠️ **Verify Player ID before confirming!**\nThis cannot be changed after confirmation.`,
+          footer: {
+            text: 'Click button below to confirm or cancel',
+          },
+        },
+      ],
+      components: [
+        {
+          type: 1,
+          components: [
+            {
+              type: 2,
+              style: 3, // Success (green)
+              label: 'Confirm Order',
+              emoji: { name: '✅' },
+              custom_id: `confirm_order_${data.confirmationCode}`,
+            },
+            {
+              type: 2,
+              style: 4, // Danger (red)
+              label: 'Cancel',
+              emoji: { name: '❌' },
+              custom_id: 'cancel_order',
+            },
+          ],
+        },
+      ],
+    };
+  }
+
+  /**
+   * Render order status as embed
+   */
+  static renderOrderStatus(data: OrderStatusMessage) {
+    const statusColor = {
+      pending: 0xffaa00,
+      processing: 0x00aaff,
+      completed: 0x00ff00,
+      failed: 0xff0000,
+      refunded: 0xff9900,
+    }[data.status];
+
+    const statusEmoji = {
+      pending: '⏳',
+      processing: '🔄',
+      completed: '✅',
+      failed: '❌',
+      refunded: '💰',
+    }[data.status];
+
+    const fields: any[] = [
+      { name: '🆔 Order ID', value: `\`${data.orderId}\``, inline: false },
+      { name: '🎮 Game', value: data.game, inline: true },
+      { name: '💎 Denomination', value: data.denomination.toString(), inline: true },
+      { name: '🆔 Player ID', value: `\`${data.playerId}\``, inline: true },
+      { name: '📅 Created', value: data.createdAt.toLocaleString('id-ID'), inline: true },
+      { name: '🔄 Updated', value: data.updatedAt.toLocaleString('id-ID'), inline: true },
+    ];
+
+    if (data.status === 'processing' && data.retryCount) {
+      fields.push({
+        name: '🔄 Retry Status',
+        value: `Attempt ${data.retryCount}/3\nNext check: ~60s`,
+        inline: true,
+      });
+    }
+
+    if (data.status === 'failed' && data.errorMessage) {
+      fields.push({
+        name: '❌ Error',
+        value: data.errorMessage,
+        inline: false,
+      });
+      fields.push({
+        name: '💰 Refund',
+        value: 'Balance refunded automatically',
+        inline: false,
+      });
+    }
+
+    if (data.eta) {
+      fields.push({ name: '⏱️ ETA', value: data.eta, inline: true });
+    }
+
+    if (data.providerStatus) {
+      fields.push({ name: '🔧 Provider', value: data.providerStatus, inline: true });
+    }
+
+    return {
+      embeds: [
+        {
+          title: `${statusEmoji} Order Status: ${data.status.toUpperCase()}`,
+          color: statusColor,
+          fields,
+          footer: {
+            text: 'Need help? Use /support',
+          },
+        },
+      ],
+    };
+  }
+}
+
+/**
+ * Telegram-specific rendering (Markdown + inline keyboards)
+ */
+export class TelegramMessageRenderer {
+  /**
+   * Render order start with inline keyboard
+   */
+  static renderOrderStart(template: OrderStartMessage) {
+    const text = `*${template.title}*\n\n${template.description}\n\n_${template.footer}_`;
+
+    const keyboard = {
+      inline_keyboard: [
+        template.options.map((opt) => ({
+          text: `${opt.emoji} ${opt.label}`,
+          callback_data: opt.value,
+        })),
+      ],
+    };
+
+    return {
+      text,
+      parse_mode: 'Markdown',
+      reply_markup: keyboard,
+    };
+  }
+
+  /**
+   * Render price quote (uses existing formatForTelegram from PriceBreakdownService)
+   */
+  static renderPriceQuote(message: string) {
+    return {
+      text: message,
+      parse_mode: 'Markdown',
+    };
+  }
+
+  /**
+   * Render confirmation with inline buttons
+   */
+  static renderOrderConfirmation(data: OrderConfirmationMessage) {
+    const warnings = data.warnings.length > 0
+      ? `\n⚠️ *Important:*\n${data.warnings.map((w) => `• ${w}`).join('\n')}\n`
+      : '';
+
+    const text = `
+🔍 *Order Review & Confirmation*
+
+*Order Details:*
+• *Game:* ${data.gameName}
+• *Denomination:* ${data.denomination}
+• *Player ID:* \`${data.playerId}\`
+• *Total Price:* Rp ${data.finalPrice.toLocaleString('id-ID')} _(all fees included)_
+• *ETA:* ${data.eta}
+${warnings}
+⚠️ *Please verify the Player ID is correct before confirming.*
+This cannot be changed after confirmation.
+
+🔒 *Confirmation Code:* \`${data.confirmationCode}\`
+⏱️ *Expires in:* ${data.expiryMinutes} minutes
+    `.trim();
+
+    const keyboard = {
+      inline_keyboard: [
+        [
+          {
+            text: '✅ Confirm Order',
+            callback_data: `confirm_order_${data.confirmationCode}`,
+          },
+          {
+            text: '❌ Cancel',
+            callback_data: 'cancel_order',
+          },
+        ],
+      ],
+    };
+
+    return {
+      text,
+      parse_mode: 'Markdown',
+      reply_markup: keyboard,
+    };
+  }
+
+  /**
+   * Render order status
+   */
+  static renderOrderStatus(message: string) {
+    return {
+      text: message,
+      parse_mode: 'Markdown',
+    };
+  }
+}
+
+/**
+ * WhatsApp-specific rendering (plain text + quick replies)
+ */
+export class WhatsAppMessageRenderer {
+  /**
+   * Render order start with quick replies
+   */
+  static renderOrderStart(template: OrderStartMessage) {
+    const text = `${template.title}\n\n${template.description}\n\n${template.footer}`;
+
+    // WhatsApp quick reply format (depends on library)
+    const quickReplies = template.options.map((opt) => ({
+      body: `${opt.emoji} ${opt.label}`,
+      id: opt.value,
+    }));
+
+    return {
+      text,
+      quickReplies,
+    };
+  }
+
+  /**
+   * Render price quote (plain text)
+   */
+  static renderPriceQuote(message: string) {
+    return { text: message };
+  }
+
+  /**
+   * Render confirmation with reply instructions
+   */
+  static renderOrderConfirmation(data: OrderConfirmationMessage) {
+    const warnings = data.warnings.length > 0
+      ? `\n⚠️ *Important:*\n${data.warnings.map((w) => `• ${w}`).join('\n')}\n`
+      : '';
+
+    const text = `
+🔍 *Order Review & Confirmation*
+
+*Order Details:*
+• *Game:* ${data.gameName}
+• *Denomination:* ${data.denomination}
+• *Player ID:* ${data.playerId}
+• *Total Price:* Rp ${data.finalPrice.toLocaleString('id-ID')} (all fees included)
+• *ETA:* ${data.eta}
+${warnings}
+⚠️ *Please verify the Player ID is correct before confirming.*
+This cannot be changed after confirmation.
+
+🔒 *Confirmation Code:* ${data.confirmationCode}
+⏱️ *Expires in:* ${data.expiryMinutes} minutes
+
+*To Confirm:*
+Reply: YES ${data.confirmationCode}
+
+*To Cancel:*
+Reply: NO
+    `.trim();
+
+    return { text };
+  }
+
+  /**
+   * Render order status
+   */
+  static renderOrderStatus(message: string) {
+    return { text: message };
+  }
+}
+
+/**
+ * Platform router: automatically selects renderer
+ */
+export class PlatformMessageRouter {
+  static render(
+    platform: 'discord' | 'telegram' | 'whatsapp',
+    messageType: 'orderStart' | 'priceQuote' | 'orderConfirmation' | 'orderStatus',
+    data: any
+  ) {
+    switch (platform) {
+      case 'discord':
+        return this.renderDiscord(messageType, data);
+      case 'telegram':
+        return this.renderTelegram(messageType, data);
+      case 'whatsapp':
+        return this.renderWhatsApp(messageType, data);
+    }
+  }
+
+  private static renderDiscord(messageType: string, data: any) {
+    switch (messageType) {
+      case 'orderStart':
+        return DiscordMessageRenderer.renderOrderStart(data);
+      case 'priceQuote':
+        return DiscordMessageRenderer.renderPriceQuote(data);
+      case 'orderConfirmation':
+        return DiscordMessageRenderer.renderOrderConfirmation(data);
+      case 'orderStatus':
+        return DiscordMessageRenderer.renderOrderStatus(data);
+    }
+  }
+
+  private static renderTelegram(messageType: string, data: any) {
+    switch (messageType) {
+      case 'orderStart':
+        return TelegramMessageRenderer.renderOrderStart(data);
+      case 'priceQuote':
+        return TelegramMessageRenderer.renderPriceQuote(data);
+      case 'orderConfirmation':
+        return TelegramMessageRenderer.renderOrderConfirmation(data);
+      case 'orderStatus':
+        return TelegramMessageRenderer.renderOrderStatus(data);
+    }
+  }
+
+  private static renderWhatsApp(messageType: string, data: any) {
+    switch (messageType) {
+      case 'orderStart':
+        return WhatsAppMessageRenderer.renderOrderStart(data);
+      case 'priceQuote':
+        return WhatsAppMessageRenderer.renderPriceQuote(data);
+      case 'orderConfirmation':
+        return WhatsAppMessageRenderer.renderOrderConfirmation(data);
+      case 'orderStatus':
+        return WhatsAppMessageRenderer.renderOrderStatus(data);
+    }
+  }
+}

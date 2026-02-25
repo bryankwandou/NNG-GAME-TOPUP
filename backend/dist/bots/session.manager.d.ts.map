@@ -1,0 +1,1 @@
+{"version":3,"file":"session.manager.d.ts","sourceRoot":"","sources":["../../src/bots/session.manager.ts"],"names":[],"mappings":"AACA,OAAO,EAAE,cAAc,EAAE,MAAM,cAAc,CAAC;AAE9C,cAAM,cAAc;IAChB,OAAO,CAAC,QAAQ,CAAqC;IAErD,WAAW,CAAC,KAAK,EAAE,cAAc;IAIjC,UAAU,CAAC,SAAS,EAAE,MAAM,GAAG,cAAc,GAAG,SAAS;IAIzD,aAAa,CAAC,SAAS,EAAE,MAAM;IAK/B,OAAO;CAQV;AAED,eAAO,MAAM,cAAc,gBAAuB,CAAC"}

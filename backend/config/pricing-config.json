@@ -1,0 +1,147 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "lastUpdated": "2025-12-08",
+    "description": "NNG Game Top-Up Store Bot - Fair Pricing Configuration",
+    "philosophy": "Ethical, community-friendly, transparent pricing that covers costs and provides reasonable, non-predatory margins"
+  },
+  "monthly_costs": {
+    "electricity_usd": 5,
+    "electricity_idr": 75000,
+    "hosting_usd": 0,
+    "hosting_idr": 0,
+    "domain_usd": 2.5,
+    "domain_idr": 37500,
+    "bot_maintenance_hours": 5,
+    "bot_maintenance_hourly_rate_usd": 15,
+    "bot_maintenance_hourly_rate_idr": 225000,
+    "bot_maintenance_total_idr": 1125000,
+    "estimated_monthly_orders": 1000,
+    "total_monthly_overhead_idr": 1237500,
+    "cost_per_order_idr": 1237.50
+  },
+  "tax": {
+    "ppn_rate": 0.11,
+    "ppn_description": "Indonesian Value-Added Tax (PPN) - 11%",
+    "pph_rate": 0.02,
+    "pph_description": "Indonesian Income Tax (PPh) - 2% (simplified; actual may vary by revenue tier)",
+    "tax_applies_to": "margin",
+    "region": "ID"
+  },
+  "payment_processing": {
+    "gateway_fee_rate": 0.03,
+    "gateway_fee_description": "3% payment gateway fee (e.g., Stripe, Xendit)",
+    "fee_passed_to_customer": true,
+    "fee_description": "Customer bears payment processing fee for transparency"
+  },
+  "tiers": {
+    "end_user": {
+      "name": "End User / Individual Buyer",
+      "min_margin_rate": 0.05,
+      "target_margin_rate": 0.15,
+      "max_margin_rate": 0.25,
+      "description": "Single purchases, no bulk discounts",
+      "monthly_volume_min": 0,
+      "monthly_volume_max": 500000
+    },
+    "reseller": {
+      "name": "Reseller / Small Business",
+      "description": "Active resellers with moderate volume",
+      "tiers": {
+        "bronze": {
+          "name": "Bronze Reseller",
+          "min_margin_rate": 0.08,
+          "target_margin_rate": 0.12,
+          "max_margin_rate": 0.2,
+          "monthly_turnover_min_idr": 0,
+          "monthly_turnover_max_idr": 5000000,
+          "base_markup_delta_idr": 500,
+          "benefits": ["Access to reseller dashboard", "Priority support"]
+        },
+        "silver": {
+          "name": "Silver Reseller",
+          "min_margin_rate": 0.06,
+          "target_margin_rate": 0.10,
+          "max_margin_rate": 0.18,
+          "monthly_turnover_min_idr": 5000000,
+          "monthly_turnover_max_idr": 20000000,
+          "base_markup_delta_idr": 400,
+          "benefits": ["Reseller dashboard", "Priority support", "Custom branding available"]
+        },
+        "gold": {
+          "name": "Gold Reseller",
+          "min_margin_rate": 0.04,
+          "target_margin_rate": 0.08,
+          "max_margin_rate": 0.15,
+          "monthly_turnover_min_idr": 20000000,
+          "monthly_turnover_max_idr": 50000000,
+          "base_markup_delta_idr": 300,
+          "benefits": ["Full dashboard", "24/7 support", "Custom branding", "API access"]
+        },
+        "agency": {
+          "name": "Agency / High-Volume Reseller",
+          "min_margin_rate": 0.02,
+          "target_margin_rate": 0.05,
+          "max_margin_rate": 0.10,
+          "monthly_turnover_min_idr": 50000000,
+          "monthly_turnover_max_idr": null,
+          "base_markup_delta_idr": 200,
+          "benefits": ["Full API", "Dedicated support", "Custom integrations", "Wholesale pricing"]
+        }
+      }
+    },
+    "distributor": {
+      "name": "Distributor / Bulk Buyer",
+      "min_margin_rate": 0.01,
+      "target_margin_rate": 0.04,
+      "max_margin_rate": 0.08,
+      "monthly_volume_min": 50000000,
+      "description": "Very high volume, custom pricing available upon negotiation"
+    }
+  },
+  "sustainability": {
+    "breakeven_monthly_revenue_idr": 1237500,
+    "breakeven_monthly_orders_at_avg_price": 100,
+    "warning_if_below_monthly_orders": 50,
+    "recommended_monthly_orders": 1000,
+    "recommended_monthly_revenue_idr": 12375000,
+    "target_monthly_profit_idr": 5000000,
+    "target_annual_profit_idr": 60000000,
+    "profit_margin_calculation": {
+      "step1": "Total Revenue - Total Costs = Operating Profit",
+      "step2": "Operating Profit / Total Revenue = Profit Margin %",
+      "step3": "Alert if Profit Margin % < 10% (unsustainable)"
+    }
+  },
+  "price_validation": {
+    "never_sell_below_cost": true,
+    "warn_if_margin_exceeds_max": true,
+    "warn_if_margin_below_min": true,
+    "market_price_comparison": {
+      "enabled": true,
+      "sources": ["Lazada", "Shopee", "Bukalapak"],
+      "warn_if_above_market_by_percent": 20,
+      "recommend_price_reduction_if_above_market_by_percent": 25
+    }
+  },
+  "example_calculation": {
+    "game": "MLBB 86K",
+    "supplier_cost_idr": 78000,
+    "overhead_per_order_idr": 1237.50,
+    "subtotal_pre_tax_idr": 79237.50,
+    "ppn_11_percent_idr": 8715.12,
+    "pph_2_percent_idr": 1584.75,
+    "subtotal_post_tax_idr": 89537.37,
+    "end_user_margin_15_percent_idr": 13430.61,
+    "end_user_final_price_idr": 102967.98,
+    "bronze_reseller_margin_12_percent_idr": 10744.49,
+    "bronze_reseller_final_price_idr": 100281.86,
+    "silver_reseller_margin_10_percent_idr": 8953.74,
+    "silver_reseller_final_price_idr": 98491.11,
+    "gold_reseller_margin_8_percent_idr": 7163.00,
+    "gold_reseller_final_price_idr": 96700.37,
+    "agency_margin_5_percent_idr": 4476.87,
+    "agency_final_price_idr": 94014.24,
+    "notes": "All calculations include PPN (11%) and PPh (2%) taxes, allocated over margin per Indonesian tax law recommendations"
+  }
+}

@@ -1,0 +1,387 @@
+// prisma/schema.prisma
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/client"
+}
+
+// ============================================
+// RESELLERS & AUTHENTICATION
+// ============================================
+
+enum ResellerTier {
+  BRONZE
+  SILVER
+  GOLD
+  AGENCY
+}
+
+enum ResellerStatus {
+  ACTIVE
+  SUSPENDED
+  BANNED
+}
+
+model Reseller {
+  id       String         @id @default(cuid())
+  email    String?        @unique
+  username String         @unique
+  name     String
+  tier     ResellerTier   @default(BRONZE)
+  status   ResellerStatus @default(ACTIVE)
+
+  // Wallet
+  balance BigInt @default(0) // in IDR, stored as cents/smallest unit
+
+  // Turnover tracking
+  monthlyTurnover      BigInt @default(0)
+  totalTurnoverAllTime BigInt @default(0)
+
+  // Contact info (for bot linkage & notifications)
+  discordUserId       String? @unique
+  telegramUserId      String? @unique
+  whatsappPhoneNumber String? @unique
+
+  // Referral & hierarchy (for Agency tier)
+  referrerId String?
+  referrer   Reseller?  @relation("Referrals", fields: [referrerId], references: [id])
+  referrals  Reseller[] @relation("Referrals")
+
+  // Metadata
+  isVerified Boolean   @default(false)
+  verifiedAt DateTime?
+  metadata   Json?     @default("{}")
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  // Relations
+  orders    Order[]
+  deposits  Deposit[]
+  auditLogs AuditLog[]
+}
+
+// ============================================
+// PRODUCTS & PRICING
+// ============================================
+
+model Product {
+  id          String  @id @default(cuid())
+  code        String  @unique
+  gameName    String
+  displayName String
+  description String?
+  costPrice   BigInt // Our cost from supplier (in IDR)
+  baseMarkup  BigInt  @default(500) // Default markup (can be overridden per tier)
+  active      Boolean @default(true)
+
+  // Stock tracking (optional, for limited-time offers)
+  maxStock     Int?
+  currentStock Int?
+
+  // Metadata
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  orders         Order[]
+  tierPrices     TierPrice[]
+  pricingHistory ProductPricing[]
+}
+
+// Tier-based pricing override
+model TierPrice {
+  id        String       @id @default(cuid())
+  productId String
+  product   Product      @relation(fields: [productId], references: [id], onDelete: Cascade)
+  tier      ResellerTier
+  markup    BigInt // Additional markup for this tier
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([productId, tier])
+}
+
+// ============================================
+// DEPOSITS & PAYMENTS
+// ============================================
+
+enum DepositStatus {
+  PENDING
+  PAID
+  EXPIRED
+  CANCELED
+}
+
+enum PaymentChannel {
+  QRIS
+  VIRTUAL_ACCOUNT
+  BANK_TRANSFER
+  E_WALLET
+}
+
+model Deposit {
+  id         String   @id @default(cuid())
+  resellerId String
+  reseller   Reseller @relation(fields: [resellerId], references: [id], onDelete: Cascade)
+
+  amount         BigInt // in IDR
+  paymentChannel PaymentChannel @default(VIRTUAL_ACCOUNT)
+  status         DepositStatus  @default(PENDING)
+
+  // Payment gateway reference
+  externalPaymentId String? @unique
+  paymentUrl        String?
+  qrCodeUrl         String?
+
+  // For virtual account channels
+  virtualAccountNumber String?
+  bankName             String?
+
+  // Timestamps
+  createdAt DateTime  @default(now())
+  expiresAt DateTime  @default(dbgenerated("now() + interval '24 hours'"))
+  paidAt    DateTime?
+  updatedAt DateTime  @updatedAt
+
+  // Relations
+  transactions Transaction[]
+}
+
+// ============================================
+// ORDERS & TRANSACTIONS
+// ============================================
+
+enum OrderStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  REFUNDED
+  PARTIAL_SUCCESS
+}
+
+model Order {
+  id         String   @id @default(cuid())
+  resellerId String
+  reseller   Reseller @relation(fields: [resellerId], references: [id], onDelete: Cascade)
+
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+
+  targetGameId String // Game user ID / account identifier
+  quantity     Int    @default(1)
+
+  costPrice     BigInt // What we paid supplier
+  resellerPrice BigInt // What reseller pays
+  ppnAmount     BigInt @default(0)
+  marginAmount  BigInt @default(0)
+  profit        BigInt @default(0) // Calculated as resellerPrice - costPrice
+
+  status        OrderStatus @default(PENDING)
+  failureReason String?
+
+  // Supplier integration
+  externalRef       String? @unique // Supplier's order ID
+  supplierOrderData String? // JSON stored for audit trail
+
+  // Idempotency key to prevent double-charge
+  idempotencyKey String @unique @default(cuid())
+
+  // Metadata for retries and extra info
+  metadata Json? @default("{}")
+
+  // Timestamps
+  createdAt   DateTime  @default(now())
+  processedAt DateTime?
+  completedAt DateTime?
+  updatedAt   DateTime  @updatedAt
+
+  // Relations
+  transactions Transaction[]
+}
+
+// Transaction log for wallet movements
+model Transaction {
+  id             String @id @default(cuid())
+  type           String // "DEPOSIT", "ORDER", "REFUND", "ADJUSTMENT"
+  amount         BigInt
+  balance_before BigInt
+  balance_after  BigInt
+
+  // Links to business objects
+  depositId String?
+  deposit   Deposit? @relation(fields: [depositId], references: [id], onDelete: SetNull)
+
+  orderId String?
+  order   Order?  @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  // For manual adjustments
+  notes      String?
+  adjustedBy String? // admin user ID
+
+  createdAt DateTime @default(now())
+}
+
+// ============================================
+// ADMIN & AUDIT
+// ============================================
+
+model AdminUser {
+  id           String  @id @default(cuid())
+  username     String  @unique
+  email        String? @unique
+  passwordHash String
+  role         String  @default("admin") // "admin", "manager", "support"
+  isActive     Boolean @default(true)
+
+  lastLoginAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+}
+
+model AuditLog {
+  id         String    @id @default(cuid())
+  resellerId String?
+  reseller   Reseller? @relation(fields: [resellerId], references: [id], onDelete: Cascade)
+
+  action     String // "TIER_UPGRADED", "BALANCE_ADJUSTED", "STATUS_CHANGED", etc.
+  entityType String // "RESELLER", "ORDER", "DEPOSIT", etc.
+  entityId   String
+  oldValue   String? // JSON
+  newValue   String? // JSON
+
+  performedBy String? // admin user ID or "SYSTEM"
+  notes       String?
+
+  createdAt DateTime @default(now())
+
+  @@index([resellerId, createdAt])
+}
+
+// ============================================
+// REPORTING & ANALYTICS
+// ============================================
+
+model DailySummary {
+  id   String   @id @default(cuid())
+  date DateTime @unique
+
+  totalOrders      Int
+  successfulOrders Int
+  failedOrders     Int
+  totalTurnover    BigInt
+  totalCost        BigInt
+  totalProfit      BigInt
+
+  totalDeposits Int
+  depositAmount BigInt
+
+  newResellers Int
+
+  createdAt DateTime @default(now())
+}
+
+model MonthlySummary {
+  id    String @id @default(cuid())
+  year  Int
+  month Int
+
+  totalOrders       Int
+  totalTurnover     BigInt
+  totalProfit       BigInt
+  averageOrderValue BigInt
+
+  totalDeposits      Int
+  totalDepositAmount BigInt
+
+  taxableIncome BigInt // For UMKM 0.5% calculation
+  estimatedTax  BigInt // 0.5% of taxable income
+
+  createdAt DateTime @default(now())
+
+  @@unique([year, month])
+}
+
+// ============================================
+// WEBHOOK LOGS
+// ============================================
+
+model WebhookLog {
+  id        String  @id @default(cuid())
+  source    String // "PAYMENT_GATEWAY", "SUPPLIER"
+  event     String
+  payload   String // JSON
+  ipAddress String?
+  isValid   Boolean
+
+  error       String?
+  processedAt DateTime?
+
+  createdAt DateTime @default(now())
+}
+
+// ============================================
+// PRICING & SUPPLIER POOL MODELS
+// ============================================
+
+model ProductPricing {
+  id            String    @id @default(cuid())
+  productId     String
+  product       Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  denomination  Int
+  supplierPrice BigInt
+  effectiveFrom DateTime  @default(now())
+  effectiveTo   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([productId, denomination, effectiveFrom])
+}
+
+model SupplierPanel {
+  id                String                 @id @default(cuid())
+  name              String
+  apiUrl            String
+  apiKey            String
+  isActive          Boolean                @default(true)
+  priority          Int                    @default(1)
+  healthStatus      String                 @default("UNKNOWN") // HEALTHY, DEGRADED, DOWN, UNKNOWN
+  successRate       Float                  @default(1.0)
+  avgResponseTimeMs Int                    @default(0)
+  lastHealthCheck   DateTime?
+  totalRequests     Int                    @default(0)
+  totalSuccesses    Int                    @default(0)
+  totalFailures     Int                    @default(0)
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+  products          SupplierProduct[]
+  healthMetrics     SupplierHealthMetric[]
+}
+
+model SupplierProduct {
+  id          String        @id @default(cuid())
+  panelId     String
+  panel       SupplierPanel @relation(fields: [panelId], references: [id], onDelete: Cascade)
+  productCode String
+  isAvailable Boolean       @default(true)
+  lastPrice   BigInt?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@unique([panelId, productCode])
+}
+
+model SupplierHealthMetric {
+  id             String        @id @default(cuid())
+  panelId        String
+  panel          SupplierPanel @relation(fields: [panelId], references: [id], onDelete: Cascade)
+  responseTimeMs Int
+  isHealthy      Boolean
+  createdAt      DateTime      @default(now())
+}

@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Game Top-Up Chatbot</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: Arial, sans-serif;
+    }
+
+    #chat-widget {
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      z-index: 1000;
+    }
+
+    #chat-button {
+      width: 60px;
+      height: 60px;
+      border-radius: 50%;
+      background: #007bff;
+      color: white;
+      border: none;
+      cursor: pointer;
+      font-size: 24px;
+      box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+    }
+
+    #chat-window {
+      display: none;
+      position: fixed;
+      bottom: 90px;
+      right: 20px;
+      width: 350px;
+      height: 500px;
+      background: white;
+      border-radius: 10px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+      flex-direction: column;
+    }
+
+    #chat-window.open {
+      display: flex;
+    }
+
+    #chat-header {
+      background: #007bff;
+      color: white;
+      padding: 15px;
+      border-radius: 10px 10px 0 0;
+      font-weight: bold;
+    }
+
+    #chat-messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 15px;
+      background: #f5f5f5;
+    }
+
+    .message {
+      margin-bottom: 10px;
+      padding: 10px;
+      border-radius: 8px;
+      max-width: 80%;
+    }
+
+    .message.bot {
+      background: #e3f2fd;
+      align-self: flex-start;
+    }
+
+    .message.user {
+      background: #007bff;
+      color: white;
+      align-self: flex-end;
+      margin-left: auto;
+    }
+
+    #chat-input-container {
+      display: flex;
+      padding: 15px;
+      border-top: 1px solid #ddd;
+    }
+
+    #chat-input {
+      flex: 1;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 20px;
+      outline: none;
+    }
+
+    #chat-send {
+      margin-left: 10px;
+      padding: 10px 20px;
+      background: #007bff;
+      color: white;
+      border: none;
+      border-radius: 20px;
+      cursor: pointer;
+    }
+
+    #auth-section {
+      padding: 15px;
+    }
+
+    #auth-section input {
+      width: 100%;
+      padding: 10px;
+      margin-bottom: 10px;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+    }
+
+    #auth-section button {
+      width: 100%;
+      padding: 10px;
+      background: #007bff;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div id="chat-widget">
+    <button id="chat-button" onclick="toggleChat()">💬</button>
+    
+    <div id="chat-window">
+      <div id="chat-header">Game Top-Up Assistant</div>
+      
+      <!-- Auth Section -->
+      <div id="auth-section">
+        <h3>Login to Continue</h3>
+        <input type="text" id="auth-username" placeholder="Username" />
+        <button onclick="handleAuth()">Login</button>
+      </div>
+
+      <!-- Chat Section (hidden initially) -->
+      <div id="chat-section" style="display: none; flex: 1; display: flex; flex-direction: column;">
+        <div id="chat-messages"></div>
+        <div id="chat-input-container">
+          <input type="text" id="chat-input" placeholder="Type a message..." onkeypress="handleKeyPress(event)" />
+          <button id="chat-send" onclick="sendMessage()">Send</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = 'http://localhost:3000/api';
+    let resellerId = localStorage.getItem('reseller_id');
+    let resellerData = null;
+
+    if (resellerId) {
+      hideAuthSection();
+      loadResellerData();
+    }
+
+    function toggleChat() {
+      const window = document.getElementById('chat-window');
+      window.classList.toggle('open');
+    }
+
+    async function handleAuth() {
+      const username = document.getElementById('auth-username').value;
+      
+      try {
+        const response = await fetch(`${API_BASE}/resellers/by-username?username=${username}`);
+        if (!response.ok) throw new Error('User not found');
+        
+        resellerData = await response.json();
+        resellerId = resellerData.id;
+        localStorage.setItem('reseller_id', resellerId);
+        
+        hideAuthSection();
+        addBotMessage(`Welcome back, ${resellerData.name}! 🎮\n\nCommands:\n- balance\n- deposit <amount>\n- order <product> <gameid>\n- history\n- products`);
+      } catch (error) {
+        alert('Login failed: ' + error.message);
+      }
+    }
+
+    function hideAuthSection() {
+      document.getElementById('auth-section').style.display = 'none';
+      document.getElementById('chat-section').style.display = 'flex';
+    }
+
+    async function loadResellerData() {
+      try {
+        const response = await fetch(`${API_BASE}/resellers/${resellerId}`);
+        resellerData = await response.json();
+        addBotMessage(`Welcome back, ${resellerData.name}! Type "help" for commands.`);
+      } catch (error) {
+        console.error('Error loading reseller data:', error);
+      }
+    }
+
+    function handleKeyPress(event) {
+      if (event.key === 'Enter') {
+        sendMessage();
+      }
+    }
+
+    async function sendMessage() {
+      const input = document.getElementById('chat-input');
+      const message = input.value.trim();
+      
+      if (!message) return;
+      
+      addUserMessage(message);
+      input.value = '';
+      
+      await processCommand(message);
+    }
+
+    async function processCommand(message) {
+      const parts = message.toLowerCase().split(' ');
+      const command = parts[0];
+
+      try {
+        switch(command) {
+          case 'help':
+            addBotMessage(
+              'Available commands:\n' +
+              '• balance - Check your balance\n' +
+              '• deposit <amount> - Make a deposit\n' +
+              '• order <product> <gameid> - Place order\n' +
+              '• history - View order history\n' +
+              '• products - List products\n' +
+              '• price <product> - Check price'
+            );
+            break;
+
+          case 'balance':
+            await loadResellerData();
+            addBotMessage(
+              `💰 Your Balance:\n` +
+              `Balance: Rp ${resellerData.balance.toLocaleString()}\n` +
+              `Tier: ${resellerData.tier}\n` +
+              `Monthly Turnover: Rp ${resellerData.totalTurnoverMonthly.toLocaleString()}`
+            );
+            break;
+
+          case 'deposit':
+            if (parts.length < 2) {
+              addBotMessage('Usage: deposit <amount>');
+              return;
+            }
+            const amount = parseInt(parts[1]);
+            const response = await fetch(`${API_BASE}/deposits`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                resellerId,
+                amount,
+                paymentChannel: 'qris'
+              })
+            });
+            const deposit = await response.json();
+            addBotMessage(
+              `💰 Deposit Created!\n` +
+              `Amount: Rp ${amount.toLocaleString()}\n` +
+              `Payment URL: ${deposit.paymentInfo.invoiceUrl}`
+            );
+            break;
+
+          case 'order':
+            if (parts.length < 3) {
+              addBotMessage('Usage: order <product_code> <game_id>');
+              return;
+            }
+            const productCode = parts[1].toUpperCase();
+            const targetGameId = parts[2];
+            
+            const orderResponse = await fetch(`${API_BASE}/orders`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                resellerId,
+                productCode,
+                targetGameId
+              })
+            });
+            const order = await orderResponse.json();
+            addBotMessage(
+              `✅ Order Placed!\n` +
+              `Product: ${productCode}\n` +
+              `Game ID: ${targetGameId}\n` +
+              `Price: Rp ${order.resellerPrice.toLocaleString()}\n` +
+              `Status: ${order.status}`
+            );
+            break;
+
+          case 'history':
+            const historyResponse = await fetch(`${API_BASE}/orders?resellerId=${resellerId}&limit=5`);
+            const orders = await historyResponse.json();
+            
+            if (orders.length === 0) {
+              addBotMessage('No orders found.');
+            } else {
+              const orderList = orders.map((o, idx) =>
+                `${idx + 1}. ${o.product.displayName}\n` +
+                `   Game ID: ${o.targetGameId}\n` +
+                `   Price: Rp ${o.resellerPrice.toLocaleString()}\n` +
+                `   Status: ${o.status}`
+              ).join('\n\n');
+              addBotMessage(`📜 Recent Orders:\n\n${orderList}`);
+            }
+            break;
+
+          case 'products':
+            const productsResponse = await fetch(`${API_BASE}/products`);
+            const products = await productsResponse.json();
+            const productList = products.slice(0, 10).map((p, idx) =>
+              `${idx + 1}. ${p.code} - ${p.displayName} (${p.gameName})`
+            ).join('\n');
+            addBotMessage(`🎮 Products:\n\n${productList}\n\nUse "price <code>" to check price.`);
+            break;
+
+          case 'price':
+            if (parts.length < 2) {
+              addBotMessage('Usage: price <product_code>');
+              return;
+            }
+            const code = parts[1].toUpperCase();
+            const priceResponse = await fetch(`${API_BASE}/products/price?productCode=${code}&resellerId=${resellerId}`);
+            const priceData = await priceResponse.json();
+            addBotMessage(`💎 Price for ${code}: Rp ${priceData.price.toLocaleString()}`);
+            break;
+
+          default:
+            addBotMessage('Unknown command. Type "help" for available commands.');
+        }
+      } catch (error) {
+        addBotMessage(`❌ Error: ${error.message}`);
+      }
+    }
+
+    function addUserMessage(text) {
+      const messagesDiv = document.getElementById('chat-messages');
+      const messageDiv = document.createElement('div');
+      messageDiv.className = 'message user';
+      messageDiv.textContent = text;
+      messagesDiv.appendChild(messageDiv);
+      messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    }
+
+    function addBotMessage(text) {
+      const messagesDiv = document.getElementById('chat-messages');
+      const messageDiv = document.createElement('div');
+      messageDiv.className = 'message bot';
+      messageDiv.textContent = text;
+      messagesDiv.appendChild(messageDiv);
+      messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    }
+  </script>
+</body>
+</html>

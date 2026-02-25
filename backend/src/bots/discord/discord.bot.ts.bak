@@ -1,0 +1,240 @@
+import { Client, GatewayIntentBits, REST, Routes, ChatInputCommandInteraction, ApplicationCommandOptionType } from 'discord.js';
+import { env } from '../../config/env';
+import { logger } from '../../config/logger';
+import { getSystemHealth } from '../../modules/admin/health.service';
+import { formatOrderPreviewDiscord, formatSystemHealthDiscord, formatSustainabilityReportDiscord } from '../order-message-templates';
+import { rateLimiter } from '../../modules/security/rate-limiter.service';
+import { prisma } from '../../config/database';
+import { pricingConfigManager } from '../../config/pricing.config';
+import { resellerService } from '../../modules/resellers/reseller.service';
+import { createDeposit } from '../../modules/deposits/deposits.service';
+import { createOrder, getResellerOrders } from '../../modules/orders/orders.service';
+import { getResellerPrice } from '../../modules/pricing/pricing.service';
+import { SustainabilityService } from '../../modules/analytics/sustainability.service';
+
+const sustainabilityService = new SustainabilityService(prisma as any, pricingConfigManager);
+
+const client = new Client({
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent,
+  ],
+});
+
+client.once('ready', () => {
+  logger.info(`Discord bot logged in as ${client.user?.tag}`, { type: 'discord' });
+  registerSlashCommands();
+});
+
+client.on('interactionCreate', async (interaction) => {
+  if (!interaction.isChatInputCommand()) return;
+
+  const userId = interaction.user.id;
+  if (rateLimiter.isRateLimited(userId)) {
+    await interaction.reply({
+      content: '⚠️ **Slow down!** You are sending commands too fast.',
+      ephemeral: true,
+    });
+    return;
+  }
+
+  try {
+    await handleCommand(interaction);
+  } catch (error) {
+    logger.error(`Discord command error`, {
+      type: 'discord',
+      meta: { command: interaction.commandName, error: (error as Error).message },
+    });
+    if (interaction.deferred || interaction.replied) {
+      await interaction.editReply({ content: `❌ Error: ${(error as Error).message}` });
+    } else {
+      await interaction.reply({ content: `❌ Error: ${(error as Error).message}`, ephemeral: true });
+    }
+  }
+});
+
+async function handleCommand(interaction: ChatInputCommandInteraction) {
+  const userId = interaction.user.id;
+  const options = interaction.options;
+
+  switch (interaction.commandName) {
+    case 'register': {
+      await interaction.deferReply({ ephemeral: true });
+      const username = options.getString('username');
+      const name = options.getString('name');
+
+      const reseller = await resellerService.createReseller({
+        username: username!,
+        name: name!,
+        discordUserId: userId,
+      });
+
+      await interaction.editReply({
+        content: `✅ Registered successfully!\nReseller ID: \`${reseller.id}\`\nTier: ${reseller.tier}\nBalance: Rp 0`,
+      });
+      break;
+    }
+
+    case 'profile': {
+      await interaction.deferReply({ ephemeral: true });
+      const reseller = await resellerService.getResellerByDiscordId(userId);
+
+      if (!reseller) {
+        await interaction.editReply({
+          content: '❌ You are not registered. Use `/register` first.',
+        });
+        return;
+      }
+
+      await interaction.editReply({
+        content: `📊 **Your Profile**\nName: ${reseller.name}\nTier: **${reseller.tier}**\nBalance: Rp ${reseller.balance.toString()}\nMonthly Turnover: Rp ${reseller.monthlyTurnover.toString()}\nStatus: ${reseller.status}`,
+      });
+      break;
+    }
+
+    case 'deposit': {
+      await interaction.deferReply({ ephemeral: true });
+      const amount = options.getInteger('amount');
+      const channel = options.getString('channel') || 'QRIS';
+
+      const reseller = await resellerService.getResellerByDiscordId(userId);
+      if (!reseller) {
+        await interaction.editReply({ content: '❌ You are not registered.' });
+        return;
+      }
+
+      const deposit = await createDeposit({
+        resellerId: reseller.id,
+        amount: BigInt(amount!),
+        paymentChannel: channel as any,
+      });
+
+      await interaction.editReply({
+        content: `💳 **Deposit Created**\nAmount: Rp ${amount}\nChannel: ${channel}\n\n📱 Payment Link: ${deposit.paymentUrl}`,
+      });
+      break;
+    }
+
+    case 'price': {
+      await interaction.deferReply({ ephemeral: true });
+      const productCode = options.getString('product_code');
+      const reseller = await resellerService.getResellerByDiscordId(userId);
+      if (!reseller) {
+        await interaction.editReply('❌ Register first.');
+        return;
+      }
+
+      const price = await getResellerPrice(productCode!, reseller.tier);
+      await interaction.editReply({
+        content: `💰 **Price for ${productCode}**\nYour Price: Rp ${price.toString()}\nTier: ${reseller.tier}`,
+      });
+      break;
+    }
+
+    case 'order': {
+      await interaction.deferReply({ ephemeral: true });
+      const productCode = options.getString('product_code');
+      const gameId = options.getString('game_id');
+
+      const reseller = await resellerService.getResellerByDiscordId(userId);
+      if (!reseller) {
+        await interaction.editReply('❌ Register first.');
+        return;
+      }
+
+      const order = await createOrder({
+        resellerId: reseller.id,
+        productCode: productCode!,
+        targetGameId: gameId!,
+      });
+
+      await interaction.editReply({
+        content: `✅ **Order Created**\nOrder ID: \`${order.id}\`\nStatus: ${order.status}`,
+      });
+      break;
+    }
+
+    case 'history': {
+      await interaction.deferReply({ ephemeral: true });
+      const reseller = await resellerService.getResellerByDiscordId(userId);
+      if (!reseller) {
+        await interaction.editReply('❌ Register first.');
+        return;
+      }
+
+      const orders = await getResellerOrders(reseller.id, 5);
+      if (orders.length === 0) {
+        await interaction.editReply('No orders found.');
+        return;
+      }
+
+      const historyText = orders
+        .map((o: any) => `• ${o.product?.code || 'Product'} → ${o.targetGameId} | Status: ${o.status}`)
+        .join('\n');
+
+      await interaction.editReply({
+        content: `📜 **Recent Orders**\n${historyText}`,
+      });
+      break;
+    }
+
+    case 'health': {
+      const healthData = await getSystemHealth();
+      const discordEmbed = formatSystemHealthDiscord(healthData);
+      await interaction.reply({
+        embeds: discordEmbed.embeds,
+        ephemeral: true
+      });
+      break;
+    }
+
+    case 'sustainability': {
+      await interaction.deferReply({ ephemeral: true });
+      const startDate = new Date();
+      startDate.setMonth(startDate.getMonth() - 1);
+      const metrics = await sustainabilityService.calculateMetrics(startDate, new Date());
+      const discordEmbed = formatSustainabilityReportDiscord(metrics);
+      await interaction.editReply({
+        embeds: discordEmbed.embeds
+      });
+      break;
+    }
+
+    case 'help': {
+      await interaction.reply({
+        content: `📖 **Available Commands**\n/register, /profile, /deposit, /price, /order, /health, /history`,
+        ephemeral: true,
+      });
+      break;
+    }
+  }
+}
+
+async function registerSlashCommands() {
+  const commands = [
+    { name: 'register', description: 'Register as a reseller', options: [{ name: 'username', description: 'Your username', type: ApplicationCommandOptionType.String, required: true }, { name: 'name', description: 'Your full name', type: ApplicationCommandOptionType.String, required: true }] },
+    { name: 'profile', description: 'View your profile' },
+    { name: 'deposit', description: 'Deposit funds', options: [{ name: 'amount', description: 'Amount', type: ApplicationCommandOptionType.Integer, required: true }] },
+    { name: 'price', description: 'Check price', options: [{ name: 'product_code', description: 'Product code', type: ApplicationCommandOptionType.String, required: true }] },
+    { name: 'order', description: 'Place order', options: [{ name: 'product_code', description: 'Product', type: ApplicationCommandOptionType.String, required: true }, { name: 'game_id', description: 'Game ID', type: ApplicationCommandOptionType.String, required: true }] },
+    { name: 'history', description: 'View recent orders' },
+    { name: 'health', description: 'System health' },
+    { name: 'sustainability', description: 'Business report' },
+    { name: 'help', description: 'Show help' }
+  ];
+
+  try {
+    const rest = new REST({ version: '10' }).setToken(env.DISCORD_TOKEN!);
+    await rest.put(Routes.applicationCommands(env.DISCORD_CLIENT_ID!), { body: commands });
+    logger.info('Registered Discord commands');
+  } catch (error) {
+    logger.error('Failed to register Discord commands', error);
+  }
+}
+
+export async function startDiscordBot() {
+  if (env.DISCORD_TOKEN) await client.login(env.DISCORD_TOKEN);
+}
+export const initializeDiscordBot = startDiscordBot;
+export default client;

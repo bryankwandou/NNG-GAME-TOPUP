@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NNG Bot Admin Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-gray-900 text-gray-100">
+    <div class="min-h-screen p-8">
+        <!-- Header -->
+        <div class="mb-8">
+            <h1 class="text-4xl font-bold text-white mb-2">NNG Game Top-Up Bot</h1>
+            <p class="text-gray-400">Admin Dashboard • Sustainability & Economics Monitor</p>
+        </div>
+
+        <!-- Main Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+            <!-- Card: Total Revenue -->
+            <div class="bg-gray-800 rounded-lg p-6 border border-gray-700">
+                <div class="text-gray-400 text-sm mb-2">Total Revenue (30d)</div>
+                <div class="text-3xl font-bold text-green-400" id="totalRevenue">Rp 0</div>
+                <div class="text-gray-500 text-xs mt-2">
+                    <span id="orderCount">0</span> orders
+                </div>
+            </div>
+
+            <!-- Card: Net Profit -->
+            <div class="bg-gray-800 rounded-lg p-6 border border-gray-700">
+                <div class="text-gray-400 text-sm mb-2">Net Profit After Costs</div>
+                <div class="text-3xl font-bold" id="netProfit">Rp 0</div>
+                <div class="text-gray-500 text-xs mt-2" id="breakEvenStatus">
+                    Status: calculating...
+                </div>
+            </div>
+
+            <!-- Card: Break-Even -->
+            <div class="bg-gray-800 rounded-lg p-6 border border-gray-700">
+                <div class="text-gray-400 text-sm mb-2">Break-Even Status</div>
+                <div class="text-3xl font-bold" id="daysToBreakEven">-- days</div>
+                <div class="text-gray-500 text-xs mt-2">
+                    <span id="ordersNeeded">0</span> more orders needed
+                </div>
+            </div>
+
+            <!-- Card: Margin Rate -->
+            <div class="bg-gray-800 rounded-lg p-6 border border-gray-700">
+                <div class="text-gray-400 text-sm mb-2">Average Margin Rate</div>
+                <div class="text-3xl font-bold" id="marginRate">0%</div>
+                <div class="text-yellow-500 text-xs mt-2" id="marginWarning">
+                    ⚠️ Review pricing
+                </div>
+            </div>
+        </div>
+
+        <!-- Recommendations Section -->
+        <div class="bg-gray-800 rounded-lg p-6 border border-gray-700 mb-8">
+            <h2 class="text-xl font-bold text-white mb-4">📊 System Recommendations</h2>
+            <div id="recommendationsList" class="space-y-2">
+                <div class="text-gray-400">Loading recommendations...</div>
+            </div>
+        </div>
+
+        <!-- Charts Grid -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+            <!-- Revenue Trend Chart -->
+            <div class="bg-gray-800 rounded-lg p-6 border border-gray-700">
+                <h2 class="text-lg font-bold text-white mb-4">Revenue Trend (30 days)</h2>
+                <canvas id="revenueChart"></canvas>
+            </div>
+
+            <!-- Revenue by Tier Chart -->
+            <div class="bg-gray-800 rounded-lg p-6 border border-gray-700">
+                <h2 class="text-lg font-bold text-white mb-4">Revenue by Tier</h2>
+                <canvas id="tierChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Warnings Section -->
+        <div class="bg-gray-800 rounded-lg p-6 border border-gray-700 mb-8">
+            <h2 class="text-xl font-bold text-white mb-4">⚠️ Alerts & Warnings</h2>
+            <div id="warningsList" class="space-y-2">
+                <div class="text-gray-400">No critical warnings</div>
+            </div>
+        </div>
+
+        <!-- Background Jobs Status -->
+        <div class="bg-gray-800 rounded-lg p-6 border border-gray-700">
+            <h2 class="text-lg font-bold text-white mb-4">🔄 System Status</h2>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                <div>
+                    <div class="text-gray-400">Order Retries</div>
+                    <div class="text-green-400 font-bold" id="retryStatus">✓ Running</div>
+                </div>
+                <div>
+                    <div class="text-gray-400">Refund Processor</div>
+                    <div class="text-green-400 font-bold" id="refundStatus">✓ Running</div>
+                </div>
+                <div>
+                    <div class="text-gray-400">Supplier Polling</div>
+                    <div class="text-green-400 font-bold" id="pollerStatus">✓ Running</div>
+                </div>
+                <div>
+                    <div class="text-gray-400">Next Job Run</div>
+                    <div class="text-blue-400 font-bold" id="nextJobTime">In 5m</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript: Fetch & Update Data -->
+    <script>
+        const API_BASE = '/api';
+
+        async function loadSustainabilityData() {
+            try {
+                const res = await fetch(`${API_BASE}/reporting/sustainability?period=30days`);
+                const data = await res.json();
+                const metrics = data.metrics;
+
+                // Update cards
+                document.getElementById('totalRevenue').textContent = 
+                    `Rp ${(metrics.totalOrderValue / 1000000).toFixed(1)}M`;
+                document.getElementById('orderCount').textContent = metrics.totalOrders;
+                
+                const profit = metrics.netProfitAfterCosts;
+                const profitText = profit >= 0 
+                    ? `Rp ${(profit / 1000000).toFixed(1)}M` 
+                    : `-Rp ${(Math.abs(profit) / 1000000).toFixed(1)}M`;
+                document.getElementById('netProfit').textContent = profitText;
+                document.getElementById('netProfit').parentElement.style.color = 
+                    profit >= 0 ? 'inherit' : 'rgb(239 68 68)';
+
+                const breakEvenText = metrics.isBreakEven 
+                    ? '✅ BREAK-EVEN ACHIEVED!' 
+                    : `⏳ ${metrics.daysUntilBreakEven || '?'} days away`;
+                document.getElementById('breakEvenStatus').textContent = breakEvenText;
+                document.getElementById('daysToBreakEven').textContent = 
+                    metrics.ordersNeededToBreakEven || 0;
+
+                const marginColor = metrics.profitMarginRate > 30 ? 'text-red-400' :
+                                  metrics.profitMarginRate > 20 ? 'text-yellow-400' :
+                                  metrics.profitMarginRate >= 5 ? 'text-green-400' :
+                                  'text-red-400';
+                document.getElementById('marginRate').textContent = 
+                    `${metrics.profitMarginRate.toFixed(1)}%`;
+                document.getElementById('marginRate').className = 
+                    `text-3xl font-bold ${marginColor}`;
+
+                // Update recommendations
+                const recList = document.getElementById('recommendationsList');
+                recList.innerHTML = metrics.recommendations.length > 0
+                    ? metrics.recommendations.map(r => 
+                        `<div class="text-gray-300 text-sm">• ${r}</div>`).join('')
+                    : '<div class="text-green-400">✅ All systems optimal</div>';
+
+                // Update warnings
+                const warnList = document.getElementById('warningsList');
+                warnList.innerHTML = metrics.warnings.length > 0
+                    ? metrics.warnings.map(w => 
+                        `<div class="text-red-400 text-sm">⚠️ ${w}</div>`).join('')
+                    : '<div class="text-gray-400">No warnings</div>';
+
+            } catch (error) {
+                console.error('Failed to load sustainability data:', error);
+                document.getElementById('recommendationsList').innerHTML = 
+                    '<div class="text-red-400">Failed to load data</div>';
+            }
+        }
+
+        // Load data on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            loadSustainabilityData();
+            // Refresh every 5 minutes
+            setInterval(loadSustainabilityData, 5 * 60 * 1000);
+        });
+    </script>
+</body>
+</html>

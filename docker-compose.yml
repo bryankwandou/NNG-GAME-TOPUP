@@ -1,0 +1,78 @@
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:14-alpine
+    container_name: topup_db
+    environment:
+      POSTGRES_USER: topupuser
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-topuppass123}
+      POSTGRES_DB: topupdb
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - topup_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U topupuser"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Backend Application
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: topup_backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgresql://topupuser:${DB_PASSWORD:-topuppass123}@postgres:5432/topupdb
+      JWT_SECRET: ${JWT_SECRET}
+      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      WHATSAPP_SESSION_PATH: /app/whatsapp-session
+      SUPPLIER_API_URL: ${SUPPLIER_API_URL}
+      SUPPLIER_API_KEY: ${SUPPLIER_API_KEY}
+      PAYMENT_GATEWAY_URL: ${PAYMENT_GATEWAY_URL}
+      PAYMENT_GATEWAY_KEY: ${PAYMENT_GATEWAY_KEY}
+      PAYMENT_WEBHOOK_SECRET: ${PAYMENT_WEBHOOK_SECRET}
+    volumes:
+      - whatsapp_session:/app/whatsapp-session
+      - ./backend/logs:/app/logs
+    ports:
+      - "3000:3000"
+    networks:
+      - topup_network
+    restart: unless-stopped
+
+  # Nginx Reverse Proxy
+  nginx:
+    image: nginx:alpine
+    container_name: topup_nginx
+    depends_on:
+      - backend
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./backend/src/web/admin:/usr/share/nginx/html/admin:ro
+      - ./backend/src/web/chatwidget:/usr/share/nginx/html/chat:ro
+    ports:
+      - "80:80"
+      - "443:443"
+    networks:
+      - topup_network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  whatsapp_session:
+
+networks:
+  topup_network:
+    driver: bridge

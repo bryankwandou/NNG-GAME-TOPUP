@@ -1,0 +1,157 @@
+// src/bots/telegram/telegram.bot.ts
+import { Telegraf, Context } from 'telegraf';
+import { env } from '../../config/env';
+import { logger } from '../../config/logger';
+import { resellerService } from '../../modules/resellers/reseller.service';
+import { createDeposit } from '../../modules/deposits/deposits.service';
+import { createOrder, getResellerOrders } from '../../modules/orders/orders.service';
+import { getResellerPrice } from '../../modules/pricing/pricing.service';
+import { rateLimiter } from '../../modules/security/rate-limiter.service';
+import { getSystemHealth } from '../../modules/admin/health.service';
+import { formatSystemHealth, formatSustainabilityReport } from '../order-message-templates';
+import { SustainabilityService } from '../../modules/analytics/sustainability.service';
+import { prisma } from '../../config/database';
+import { pricingConfigManager } from '../../config/pricing.config';
+
+const sustainabilityService = new SustainabilityService(prisma as any, pricingConfigManager);
+
+let bot: Telegraf<Context> | null = null;
+
+export async function startTelegramBot() {
+  if (!env.TELEGRAM_TOKEN) {
+    logger.warn('TELEGRAM_TOKEN not set, skipping Telegram bot');
+    return;
+  }
+
+  bot = new Telegraf(env.TELEGRAM_TOKEN);
+
+  bot.use(async (ctx: Context, next: () => Promise<void>) => {
+    const userId = ctx.from?.id.toString();
+    if (userId && rateLimiter.isRateLimited(userId)) {
+      await ctx.reply('⚠️ **Slow down!** You are sending commands too fast.');
+      return;
+    }
+    return next();
+  });
+
+  bot.command('start', (ctx) => ctx.reply('👋 Welcome to NNG Bot! Use /register or /help.'));
+  bot.command('register', handleRegister);
+  bot.command('profile', handleProfile);
+  bot.command('deposit', handleDeposit);
+  bot.command('price', handlePrice);
+  bot.command('order', handleOrder);
+  bot.command('history', handleHistory);
+  bot.command('health', handleHealth);
+  bot.command('sustainability', handleSustainability);
+  bot.command('help', handleHelp);
+
+  try {
+    await bot.launch();
+    logger.info('Telegram bot started');
+  } catch (error) {
+    logger.error('Failed to start Telegram bot', { error });
+  }
+}
+
+async function handleRegister(ctx: any) {
+  const args = ctx.message?.text?.split(' ') || [];
+  if (args.length < 3) {
+    await ctx.reply('Usage: /register <username> <name>');
+    return;
+  }
+  try {
+    const reseller = await resellerService.createReseller({
+      username: args[1],
+      name: args.slice(2).join(' '),
+      telegramId: ctx.from?.id.toString(),
+    });
+    await ctx.reply(`✅ Registered! ID: ${reseller.id}`);
+  } catch (error) {
+    await ctx.reply(`❌ Error: ${(error as Error).message}`);
+  }
+}
+
+async function handleProfile(ctx: any) {
+  try {
+    const reseller = await resellerService.getResellerByTelegramId(ctx.from?.id.toString() || '');
+    if (!reseller) return ctx.reply('❌ Register first.');
+    await ctx.reply(`📊 Profile: ${reseller.name}\nBalance: Rp ${reseller.balance.toString()}`);
+  } catch (error) {
+    await ctx.reply(`❌ Error: ${(error as Error).message}`);
+  }
+}
+
+async function handleDeposit(ctx: any) {
+  const args = ctx.message?.text?.split(' ') || [];
+  if (args.length < 2) return ctx.reply('Usage: /deposit <amount>');
+  try {
+    const reseller = await resellerService.getResellerByTelegramId(ctx.from?.id.toString() || '');
+    if (!reseller) return ctx.reply('❌ Register first.');
+    const deposit = await createDeposit({
+      resellerId: reseller.id,
+      amount: BigInt(args[1]),
+      paymentChannel: 'QRIS' as any,
+    });
+    await ctx.reply(`💳 Payment Link: ${deposit.paymentUrl}`);
+  } catch (error) {
+    await ctx.reply(`❌ Error: ${(error as Error).message}`);
+  }
+}
+
+async function handlePrice(ctx: any) {
+  const args = ctx.message?.text?.split(' ') || [];
+  if (args.length < 2) return ctx.reply('Usage: /price <product_code>');
+  try {
+    const reseller = await resellerService.getResellerByTelegramId(ctx.from?.id.toString() || '');
+    if (!reseller) return ctx.reply('❌ Register first.');
+    const price = await getResellerPrice(args[1], reseller.tier);
+    await ctx.reply(`💰 Price: Rp ${price.toString()}`);
+  } catch (error) {
+    await ctx.reply(`❌ Error: ${(error as Error).message}`);
+  }
+}
+
+async function handleOrder(ctx: any) {
+  const args = ctx.message?.text?.split(' ') || [];
+  if (args.length < 3) return ctx.reply('Usage: /order <product_code> <game_id>');
+  try {
+    const reseller = await resellerService.getResellerByTelegramId(ctx.from?.id.toString() || '');
+    if (!reseller) return ctx.reply('❌ Register first.');
+    const order = await createOrder({
+      resellerId: reseller.id,
+      productCode: args[1],
+      targetGameId: args[2],
+    });
+    await ctx.reply(`✅ Order Created! ID: ${order.id}`);
+  } catch (error) {
+    await ctx.reply(`❌ Error: ${(error as Error).message}`);
+  }
+}
+
+async function handleHistory(ctx: any) {
+  try {
+    const reseller = await resellerService.getResellerByTelegramId(ctx.from?.id.toString() || '');
+    if (!reseller) return ctx.reply('❌ Register first.');
+    const orders = await getResellerOrders(reseller.id, 5);
+    const text = orders.map((o: any) => `• ${o.product?.code || 'Product'} Status: ${o.status}`).join('\n');
+    await ctx.reply(`📜 History:\n${text || 'No orders.'}`);
+  } catch (error) {
+    await ctx.reply(`❌ Error: ${(error as Error).message}`);
+  }
+}
+
+async function handleHealth(ctx: any) {
+  const healthData = await getSystemHealth();
+  await ctx.reply(formatSystemHealth(healthData));
+}
+
+async function handleSustainability(ctx: any) {
+  const metrics = await sustainabilityService.calculateMetrics(new Date(Date.now() - 30 * 24 * 3600 * 1000), new Date());
+  await ctx.reply(formatSustainabilityReport(metrics));
+}
+
+async function handleHelp(ctx: any) {
+  await ctx.reply('/register, /profile, /deposit, /price, /order, /history, /health, /help');
+}
+
+export default bot;

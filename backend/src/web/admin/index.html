@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin Dashboard - Game Top-Up Platform</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    .sidebar { min-height: 100vh; }
+  </style>
+</head>
+<body class="bg-gray-100">
+  <div class="flex">
+    <!-- Sidebar -->
+    <div class="sidebar w-64 bg-gray-800 text-white p-6">
+      <h1 class="text-2xl font-bold mb-8">Game Top-Up Admin</h1>
+      <nav>
+        <a href="#dashboard" class="block py-2 px-4 hover:bg-gray-700 rounded mb-2" onclick="showSection('dashboard')">📊 Dashboard</a>
+        <a href="#resellers" class="block py-2 px-4 hover:bg-gray-700 rounded mb-2" onclick="showSection('resellers')">👥 Resellers</a>
+        <a href="#products" class="block py-2 px-4 hover:bg-gray-700 rounded mb-2" onclick="showSection('products')">🎮 Products</a>
+        <a href="#orders" class="block py-2 px-4 hover:bg-gray-700 rounded mb-2" onclick="showSection('orders')">📦 Orders</a>
+        <a href="#deposits" class="block py-2 px-4 hover:bg-gray-700 rounded mb-2" onclick="showSection('deposits')">💰 Deposits</a>
+        <a href="#reports" class="block py-2 px-4 hover:bg-gray-700 rounded mb-2" onclick="showSection('reports')">📈 Reports</a>
+        <a href="#" class="block py-2 px-4 hover:bg-gray-700 rounded mb-2 text-red-400" onclick="logout()">🚪 Logout</a>
+      </nav>
+    </div>
+
+    <!-- Main Content -->
+    <div class="flex-1 p-8">
+      <!-- Login Section -->
+      <div id="login-section" class="max-w-md mx-auto mt-20">
+        <div class="bg-white p-8 rounded-lg shadow-md">
+          <h2 class="text-2xl font-bold mb-6">Admin Login</h2>
+          <form id="login-form" onsubmit="handleLogin(event)">
+            <div class="mb-4">
+              <label class="block text-gray-700 mb-2">Username</label>
+              <input type="text" id="username" class="w-full p-2 border rounded" required>
+            </div>
+            <div class="mb-6">
+              <label class="block text-gray-700 mb-2">Password</label>
+              <input type="password" id="password" class="w-full p-2 border rounded" required>
+            </div>
+            <button type="submit" class="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700">Login</button>
+          </form>
+          <div id="login-error" class="mt-4 text-red-600 hidden"></div>
+        </div>
+      </div>
+
+      <!-- Dashboard Content (hidden initially) -->
+      <div id="main-content" class="hidden">
+        <!-- Dashboard Section -->
+        <div id="dashboard" class="section">
+          <h2 class="text-3xl font-bold mb-6">Dashboard</h2>
+          <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+            <div class="bg-white p-6 rounded-lg shadow-md">
+              <h3 class="text-gray-600 mb-2">Total Orders</h3>
+              <p id="stat-orders" class="text-3xl font-bold">0</p>
+            </div>
+            <div class="bg-white p-6 rounded-lg shadow-md">
+              <h3 class="text-gray-600 mb-2">Total Turnover</h3>
+              <p id="stat-turnover" class="text-3xl font-bold">Rp 0</p>
+            </div>
+            <div class="bg-white p-6 rounded-lg shadow-md">
+              <h3 class="text-gray-600 mb-2">Total Profit</h3>
+              <p id="stat-profit" class="text-3xl font-bold text-green-600">Rp 0</p>
+            </div>
+            <div class="bg-white p-6 rounded-lg shadow-md">
+              <h3 class="text-gray-600 mb-2">Active Resellers</h3>
+              <p id="stat-resellers" class="text-3xl font-bold">0</p>
+            </div>
+          </div>
+          <div class="bg-white p-6 rounded-lg shadow-md">
+            <h3 class="text-xl font-bold mb-4">Top Resellers</h3>
+            <table class="w-full" id="top-resellers-table">
+              <thead>
+                <tr class="border-b">
+                  <th class="text-left py-2">Name</th>
+                  <th class="text-left py-2">Tier</th>
+                  <th class="text-right py-2">Monthly Turnover</th>
+                  <th class="text-right py-2">Balance</th>
+                </tr>
+              </thead>
+              <tbody id="top-resellers-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Resellers Section -->
+        <div id="resellers" class="section hidden">
+          <h2 class="text-3xl font-bold mb-6">Resellers</h2>
+          <div class="bg-white p-6 rounded-lg shadow-md">
+            <table class="w-full">
+              <thead>
+                <tr class="border-b">
+                  <th class="text-left py-2">Name</th>
+                  <th class="text-left py-2">Username</th>
+                  <th class="text-left py-2">Tier</th>
+                  <th class="text-right py-2">Balance</th>
+                  <th class="text-right py-2">Turnover</th>
+                  <th class="text-left py-2">Status</th>
+                  <th class="text-left py-2">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="resellers-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Products Section -->
+        <div id="products" class="section hidden">
+          <h2 class="text-3xl font-bold mb-6">Products</h2>
+          <button class="bg-blue-600 text-white px-4 py-2 rounded mb-4" onclick="showAddProduct()">Add Product</button>
+          <div class="bg-white p-6 rounded-lg shadow-md">
+            <table class="w-full">
+              <thead>
+                <tr class="border-b">
+                  <th class="text-left py-2">Code</th>
+                  <th class="text-left py-2">Game</th>
+                  <th class="text-left py-2">Display Name</th>
+                  <th class="text-right py-2">Cost Price</th>
+                  <th class="text-right py-2">Base Markup</th>
+                  <th class="text-left py-2">Status</th>
+                  <th class="text-left py-2">Actions</th>
+                </tr>
+              </thead>
+              <tbody id="products-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Orders Section -->
+        <div id="orders" class="section hidden">
+          <h2 class="text-3xl font-bold mb-6">Orders</h2>
+          <div class="bg-white p-6 rounded-lg shadow-md">
+            <div class="mb-4 flex gap-4">
+              <input type="date" id="orders-start-date" class="p-2 border rounded">
+              <input type="date" id="orders-end-date" class="p-2 border rounded">
+              <button class="bg-blue-600 text-white px-4 py-2 rounded" onclick="loadOrders()">Filter</button>
+            </div>
+            <table class="w-full">
+              <thead>
+                <tr class="border-b">
+                  <th class="text-left py-2">Order ID</th>
+                  <th class="text-left py-2">Reseller</th>
+                  <th class="text-left py-2">Product</th>
+                  <th class="text-left py-2">Game ID</th>
+                  <th class="text-right py-2">Price</th>
+                  <th class="text-left py-2">Status</th>
+                  <th class="text-left py-2">Date</th>
+                </tr>
+              </thead>
+              <tbody id="orders-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Deposits Section -->
+        <div id="deposits" class="section hidden">
+          <h2 class="text-3xl font-bold mb-6">Deposits</h2>
+          <div class="bg-white p-6 rounded-lg shadow-md">
+            <table class="w-full">
+              <thead>
+                <tr class="border-b">
+                  <th class="text-left py-2">Deposit ID</th>
+                  <th class="text-left py-2">Reseller</th>
+                  <th class="text-right py-2">Amount</th>
+                  <th class="text-left py-2">Channel</th>
+                  <th class="text-left py-2">Status</th>
+                  <th class="text-left py-2">Date</th>
+                </tr>
+              </thead>
+              <tbody id="deposits-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Reports Section -->
+        <div id="reports" class="section hidden">
+          <h2 class="text-3xl font-bold mb-6">Reports</h2>
+          <div class="bg-white p-6 rounded-lg shadow-md mb-6">
+            <div class="flex gap-4 mb-4">
+              <input type="date" id="report-start-date" class="p-2 border rounded">
+              <input type="date" id="report-end-date" class="p-2 border rounded">
+              <button class="bg-blue-600 text-white px-4 py-2 rounded" onclick="generateReport()">Generate Report</button>
+              <button class="bg-green-600 text-white px-4 py-2 rounded" onclick="exportReport()">Export CSV</button>
+            </div>
+            <div id="report-summary" class="grid grid-cols-3 gap-4 mt-6"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE = 'http://localhost:3000/api';
+    let authToken = localStorage.getItem('admin_token');
+
+    // Check if already logged in
+    if (authToken) {
+      document.getElementById('login-section').classList.add('hidden');
+      document.getElementById('main-content').classList.remove('hidden');
+      loadDashboard();
+    }
+
+    async function handleLogin(event) {
+      event.preventDefault();
+      const username = document.getElementById('username').value;
+      const password = document.getElementById('password').value;
+
+      try {
+        const response = await fetch(`${API_BASE}/admin/login`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password })
+        });
+
+        if (!response.ok) throw new Error('Invalid credentials');
+
+        const data = await response.json();
+        authToken = data.token;
+        localStorage.setItem('admin_token', authToken);
+
+        document.getElementById('login-section').classList.add('hidden');
+        document.getElementById('main-content').classList.remove('hidden');
+        loadDashboard();
+      } catch (error) {
+        document.getElementById('login-error').textContent = error.message;
+        document.getElementById('login-error').classList.remove('hidden');
+      }
+    }
+
+    function logout() {
+      localStorage.removeItem('admin_token');
+      authToken = null;
+      location.reload();
+    }
+
+    function showSection(sectionId) {
+      document.querySelectorAll('.section').forEach(section => {
+        section.classList.add('hidden');
+      });
+      document.getElementById(sectionId).classList.remove('hidden');
+      
+      // Load data for the section
+      switch(sectionId) {
+        case 'dashboard': loadDashboard(); break;
+        case 'resellers': loadResellers(); break;
+        case 'products': loadProducts(); break;
+        case 'orders': loadOrders(); break;
+        case 'deposits': loadDeposits(); break;
+      }
+    }
+
+    async function loadDashboard() {
+      try {
+        // Load summary report for last 30 days
+        const endDate = new Date();
+        const startDate = new Date();
+        startDate.setDate(startDate.getDate() - 30);
+
+        const summary = await fetch(
+          `${API_BASE}/reports/summary?startDate=${startDate.toISOString()}&endDate=${endDate.toISOString()}`,
+          { headers: { 'Authorization': `Bearer ${authToken}` } }
+        ).then(r => r.json());
+
+        document.getElementById('stat-orders').textContent = summary.totalOrders;
+        document.getElementById('stat-turnover').textContent = `Rp ${summary.totalTurnover.toLocaleString()}`;
+        document.getElementById('stat-profit').textContent = `Rp ${summary.totalProfit.toLocaleString()}`;
+
+        // Load top resellers
+        const topResellers = await fetch(`${API_BASE}/reports/top-resellers`, {
+          headers: { 'Authorization': `Bearer ${authToken}` }
+        }).then(r => r.json());
+
+        document.getElementById('stat-resellers').textContent = topResellers.length;
+
+        const tbody = document.getElementById('top-resellers-body');
+        tbody.innerHTML = topResellers.map(r => `
+          <tr class="border-b">
+            <td class="py-2">${r.name}</td>
+            <td class="py-2">${r.tier}</td>
+            <td class="py-2 text-right">Rp ${r.totalTurnoverMonthly.toLocaleString()}</td>
+            <td class="py-2 text-right">Rp ${r.balance.toLocaleString()}</td>
+          </tr>
+        `).join('');
+      } catch (error) {
+        console.error('Error loading dashboard:', error);
+      }
+    }
+
+    async function loadResellers() {
+      try {
+        const resellers = await fetch(`${API_BASE}/admin/resellers`, {
+          headers: { 'Authorization': `Bearer ${authToken}` }
+        }).then(r => r.json());
+
+        const tbody = document.getElementById('resellers-body');
+        tbody.innerHTML = resellers.map(r => `
+          <tr class="border-b">
+            <td class="py-2">${r.name}</td>
+            <td class="py-2">${r.username}</td>
+            <td class="py-2">${r.tier}</td>
+            <td class="py-2 text-right">Rp ${r.balance.toLocaleString()}</td>
+            <td class="py-2 text-right">Rp ${r.totalTurnoverMonthly.toLocaleString()}</td>
+            <td class="py-2"><span class="px-2 py-1 rounded text-xs ${r.status === 'active' ? 'bg-green-200 text-green-800' : 'bg-red-200 text-red-800'}">${r.status}</span></td>
+            <td class="py-2">
+              <button class="text-blue-600 hover:underline" onclick="adjustBalance('${r.id}')">Adjust Balance</button>
+            </td>
+          </tr>
+        `).join('');
+      } catch (error) {
+        console.error('Error loading resellers:', error);
+      }
+    }
+
+    async function loadProducts() {
+      try {
+        const products = await fetch(`${API_BASE}/products`).then(r => r.json());
+
+        const tbody = document.getElementById('products-body');
+        tbody.innerHTML = products.map(p => `
+          <tr class="border-b">
+            <td class="py-2">${p.code}</td>
+            <td class="py-2">${p.gameName}</td>
+            <td class="py-2">${p.displayName}</td>
+            <td class="py-2 text-right">Rp ${p.costPrice.toLocaleString()}</td>
+            <td class="py-2 text-right">Rp ${p.baseMarkup.toLocaleString()}</td>
+            <td class="py-2"><span class="px-2 py-1 rounded text-xs ${p.active ? 'bg-green-200 text-green-800' : 'bg-gray-200 text-gray-800'}">${p.active ? 'Active' : 'Inactive'}</span></td>
+            <td class="py-2">
+              <button class="text-blue-600 hover:underline">Edit</button>
+            </td>
+          </tr>
+        `).join('');
+      } catch (error) {
+        console.error('Error loading products:', error);
+      }
+    }
+
+    async function loadOrders() {
+      // TODO: Implement orders loading
+    }
+
+    async function loadDeposits() {
+      // TODO: Implement deposits loading
+    }
+
+    function adjustBalance(resellerId) {
+      const amount = prompt('Enter amount to adjust (positive or negative):');
+      const notes = prompt('Enter notes for this adjustment:');
+      
+      if (!amount || !notes) return;
+
+      fetch(`${API_BASE}/admin/adjust-balance`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authToken}`
+        },
+        body: JSON.stringify({ resellerId, amount: parseInt(amount), notes })
+      })
+      .then(() => {
+        alert('Balance adjusted successfully');
+        loadResellers();
+      })
+      .catch(error => alert('Error adjusting balance: ' + error.message));
+    }
+
+    async function generateReport() {
+      // TODO: Implement report generation
+    }
+
+    async function exportReport() {
+      const startDate = document.getElementById('report-start-date').value;
+      const endDate = document.getElementById('report-end-date').value;
+      
+      window.open(`${API_BASE}/reports/orders/export?startDate=${startDate}&endDate=${endDate}`, '_blank');
+    }
+  </script>
+</body>
+</html>
